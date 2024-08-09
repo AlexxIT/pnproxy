@@ -2,8 +2,7 @@ package tls
 
 import (
 	"encoding/binary"
-	"io"
-	"net"
+
 )
 
 func parseSNI(hello []byte) (sni string) {
@@ -74,11 +73,3 @@ func parseSNIExtension(data []byte) string {
 	}
 	return string(data[5 : 5+nameLen])
 }
-
-type connSNI struct {
-	r io.Reader
-	net.Conn
-}
-
-func (c connSNI) Read(p []byte) (int, error) { return c.r.Read(p) }
-func (connSNI) Write(p []byte) (int, error)  { return 0, io.EOF }
