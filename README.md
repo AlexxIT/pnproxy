@@ -14,15 +14,9 @@ Types:
 - Reverse proxy for HTTP and TLS (level 4 proxy)
 - HTTP anonymous proxy
 
-## Configuration
+## Install
 
-By default, the app looks for the `pnproxy.yaml` file in the current working directory.
-
-```shell
-pnproxy -config /config/pnproxy.yaml
-```
-
-By default all modules disabled and don't listen any ports.
+- Docker - [alexxit/pnproxy](https://hub.docker.com/r/alexxit/pnproxy)
 
 ## Setup
 
@@ -31,7 +25,7 @@ And want it to work on all home devices without additional configuration on each
 
 1. Install pnproxy on any server in your home network (ex. IP: `192.168.1.123`).
    It is important that ports 53, 80 and 443 be free on this server.
-2. Setup `pnproxy.yaml`
+2. Create `pnproxy.yaml`
    ```yaml
    hosts:
      adblock: doubleclick.com doubleclick.net
@@ -68,6 +62,16 @@ And want it to work on all home devices without additional configuration on each
 3. Setup DNS server for your home router to `192.168.1.123`.
 
 Optionally, instead of step 3, you can verify that everything works by configuring an HTTP proxy to `192.168.1.123:8080` on your PC or mobile device.
+
+## Configuration
+
+By default, the app looks for the `pnproxy.yaml` file in the current working directory.
+
+```shell
+pnproxy -config /config/pnproxy.yaml
+```
+
+By default all modules disabled and don't listen any ports.
 
 ## Module: Hosts
 
