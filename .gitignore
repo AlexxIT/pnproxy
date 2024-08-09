@@ -1,0 +1,10 @@
+.idea/
+.tmp/
+
+pnproxy.yaml
+
+pnproxy_linux*
+pnproxy_mac*
+pnproxy_win*
+
+0_test.go
