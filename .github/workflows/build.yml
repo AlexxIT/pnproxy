@@ -1,0 +1,168 @@
+name: Build and Push
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'master'
+    tags:
+      - 'v*'
+
+jobs:
+  build-binaries:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    env: { CGO_ENABLED: 0 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with: { go-version: '1.22' }
+
+      - name: Build pnproxy_win64
+        env: { GOOS: windows, GOARCH: amd64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_win64
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_win64, path: pnproxy.exe }
+
+      - name: Build pnproxy_win32
+        env: { GOOS: windows, GOARCH: 386 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_win32
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_win32, path: pnproxy.exe }
+
+      - name: Build pnproxy_win_arm64
+        env: { GOOS: windows, GOARCH: arm64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_win_arm64
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_win_arm64, path: pnproxy.exe }
+
+      - name: Build pnproxy_linux_amd64
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_linux_amd64
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_linux_amd64, path: pnproxy }
+
+      - name: Build pnproxy_linux_i386
+        env: { GOOS: linux, GOARCH: 386 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_linux_i386
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_linux_i386, path: pnproxy }
+
+      - name: Build pnproxy_linux_arm64
+        env: { GOOS: linux, GOARCH: arm64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_linux_arm64
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_linux_arm64, path: pnproxy }
+
+      - name: Build pnproxy_linux_arm
+        env: { GOOS: linux, GOARCH: arm, GOARM: 7 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_linux_arm
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_linux_arm, path: pnproxy }
+
+      - name: Build pnproxy_linux_armv6
+        env: { GOOS: linux, GOARCH: arm, GOARM: 6 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_linux_armv6
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_linux_armv6, path: pnproxy }
+
+      - name: Build pnproxy_linux_mipsel
+        env: { GOOS: linux, GOARCH: mipsle }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_linux_mipsel
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_linux_mipsel, path: pnproxy }
+
+      - name: Build pnproxy_mac_amd64
+        env: { GOOS: darwin, GOARCH: amd64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_mac_amd64
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_mac_amd64, path: pnproxy }
+
+      - name: Build pnproxy_mac_arm64
+        env: { GOOS: darwin, GOARCH: arm64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_mac_arm64
+        uses: actions/upload-artifact@v4
+        with: { name: pnproxy_mac_arm64, path: pnproxy }
+
+      - name: Build pnproxy_freebsd_amd64
+        env: { GOOS: freebsd, GOARCH: amd64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_freebsd_amd64
+        uses: actions/upload-artifact@v3
+        with: { name: pnproxy_freebsd_amd64, path: pnproxy }
+
+      - name: Build pnproxy_freebsd_arm64
+        env: { GOOS: freebsd, GOARCH: arm64 }
+        run: go build -ldflags "-s -w" -trimpath
+      - name: Upload pnproxy_freebsd_arm64
+        uses: actions/upload-artifact@v3
+        with: { name: pnproxy_freebsd_arm64, path: pnproxy }
+
+  docker-master:
+    name: Build docker master
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ github.repository }}
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}},enable=false
+            type=match,pattern=v(.*),group=1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: |
+            linux/amd64
+            linux/386
+            linux/arm/v7
+            linux/arm64/v8
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
