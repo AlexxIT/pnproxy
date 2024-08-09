@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -100,7 +99,7 @@ func findHandler(domain string) handlerFunc {
 }
 
 func serve(address string) {
-	log.Debug().Msgf("[tls] listen=%s", address)
+	log.Info().Msgf("[tls] listen=%s", address)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Error().Err(err).Caller().Send()
@@ -161,32 +160,60 @@ func handleRaw(params url.Values) handlerFunc {
 }
 
 func handleSplit(params url.Values) handlerFunc {
-	sleepN := 100
-	sleepD := time.Millisecond
-
-	if params.Has("sleep") {
-		s := strings.Split(params.Get("sleep"), "/")
-		sleepN, _ = strconv.Atoi(s[0])
-		sleepD, _ = time.ParseDuration(s[1])
-	}
-
 	return func(src net.Conn, host string, hello []byte) {
-		dst, err := net.DialTimeout("tcp", host+":443", 5*time.Second)
-		if err != nil {
-			log.Warn().Err(err).Caller().Send()
-			_ = src.Close()
+		for i := byte(1); i <= 5; i++ {
+			if err := handleSplitTimeout(src, host, hello, i); err != nil {
+				continue
+			}
 			return
 		}
-		defer dst.Close()
-
-		if err = writeSplit(dst, hello, sleepN, sleepD); err != nil {
-			log.Warn().Err(err).Caller().Send()
-			return
-		}
-
-		go io.Copy(dst, src)
-		io.Copy(src, dst)
+		log.Warn().Msgf("[tcp] fail host=%s", host)
 	}
+}
+
+func handleSplitTimeout(src net.Conn, host string, hello []byte, sec byte) error {
+	timeout := time.Duration(sec) * time.Second
+
+	dst, err := net.DialTimeout("tcp", host+":443", timeout)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	_ = dst.SetDeadline(time.Now().Add(timeout))
+
+	if err = writeSplit(dst, hello); err != nil {
+		return err
+	}
+
+	b, err := dst.Read(hello)
+	if err != nil {
+		return err
+	}
+
+	if sec > 1 {
+		log.Debug().Msgf("[tcp] connect host=%s retry=%d", host, sec)
+	}
+
+	_ = dst.SetDeadline(time.Time{})
+
+	if _, err = src.Write(hello[:b]); err != nil {
+		return nil
+	}
+
+	go io.Copy(dst, src)
+	io.Copy(src, dst)
+
+	return nil
+}
+
+func writeSplit(conn net.Conn, hello []byte) error {
+	for _, b := range hello {
+		if _, err := conn.Write([]byte{b}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func handleProxy(params url.Values) handlerFunc {
@@ -218,7 +245,6 @@ func handleProxyHTTP(params url.Values) handlerFunc {
 	return func(src net.Conn, host string, hello []byte) {
 		dst, err := dialer.Dial("tcp", address)
 		if err != nil {
-			_ = src.Close()
 			return
 		}
 		defer dst.Close()
@@ -262,7 +288,6 @@ func handleProxySOCKS5(params url.Values) handlerFunc {
 	return func(src net.Conn, host string, hello []byte) {
 		dst, err := dialer.Dial("tcp", host+":443")
 		if err != nil {
-			_ = src.Close()
 			return
 		}
 		defer dst.Close()
@@ -275,18 +300,4 @@ func handleProxySOCKS5(params url.Values) handlerFunc {
 		go io.Copy(dst, src)
 		io.Copy(src, dst)
 	}
-}
-
-func writeSplit(conn net.Conn, hello []byte, sleepN int, sleepD time.Duration) error {
-	_ = conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
-	for i, b := range hello {
-		if _, err := conn.Write([]byte{b}); err != nil {
-			return err
-		}
-		if i%sleepN == 0 {
-			time.Sleep(sleepD)
-		}
-	}
-	_ = conn.SetWriteDeadline(time.Time{})
-	return nil
 }

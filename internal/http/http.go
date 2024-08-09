@@ -79,7 +79,7 @@ func findHandler(domain string) http.HandlerFunc {
 }
 
 func serve(address string) {
-	log.Debug().Msgf("[http] listen=%s", address)
+	log.Info().Msgf("[http] listen=%s", address)
 	srv := &http.Server{
 		Addr:    address,
 		Handler: http.HandlerFunc(Handle),
