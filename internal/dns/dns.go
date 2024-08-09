@@ -61,7 +61,7 @@ var static = map[string][]string{
 }
 
 func serve(address string) {
-	log.Debug().Msgf("[dns] listen=%s", address)
+	log.Info().Msgf("[dns] listen=%s", address)
 	server := &dns.Server{Addr: address, Net: "udp"}
 	server.Handler = dns.HandlerFunc(func(wr dns.ResponseWriter, msg *dns.Msg) {
 		m := &dns.Msg{}
