@@ -16,6 +16,7 @@ Types:
 
 ## Install
 
+- Binary - [nightly.link](https://nightly.link/AlexxIT/pnproxy/workflows/build/master)
 - Docker - [alexxit/pnproxy](https://hub.docker.com/r/alexxit/pnproxy)
 
 ## Setup
