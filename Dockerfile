@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -ldfl
 
 
 # 2. Final image
-FROM base
+FROM alpine
 
 # Install tini (for signal handling)
 RUN apk add --no-cache tini
