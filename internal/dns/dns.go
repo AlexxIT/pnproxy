@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/miekg/dns"
 	"github.com/rs/zerolog/log"
 )
+
+var Resolve func(name string) (string, error)
 
 func Init() {
 	var cfg struct {
@@ -29,6 +32,20 @@ func Init() {
 	action, params := app.ParseAction(cfg.DNS.Default.Action)
 	if action == "doh" {
 		initDOH(params.Get("provider"), params.Get("cache") == "true")
+		Resolve = ResolveDoH
+	}
+
+	if action == "dns" {
+		Resolve = func(name string) (string, error) {
+			ips, err := ResolveDNS(name, params.Get("server"))
+			if err != nil {
+				return "", err
+			}
+			if len(ips) == 0 {
+				return "", fmt.Errorf("no IP addresses found for %s", name)
+			}
+			return ips[0], nil
+		}
 	}
 
 	for _, rule := range cfg.DNS.Rules {

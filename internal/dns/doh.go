@@ -29,7 +29,7 @@ func initDOH(provider string, cache bool) {
 	}
 }
 
-func Resolve(domain string) (string, error) {
+func ResolveDoH(domain string) (string, error) {
 	if net.ParseIP(domain) != nil {
 		return domain, nil
 	}
