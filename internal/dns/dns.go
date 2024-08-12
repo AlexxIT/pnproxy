@@ -26,18 +26,16 @@ func Init() {
 			} `yaml:"default"`
 		} `yaml:"dns"`
 	}
-
 	app.LoadConfig(&cfg)
 
-	action, params := app.ParseAction(cfg.DNS.Default.Action)
-	if action == "doh" {
-		initDOH(params.Get("provider"), params.Get("cache") == "true")
+	defaultAction, defaultParams := app.ParseAction(cfg.DNS.Default.Action)
+	switch defaultAction {
+	case "doh":
+		initDOH(defaultParams.Get("provider"), defaultParams.Get("cache") == "true")
 		Resolve = ResolveDoH
-	}
-
-	if action == "dns" {
+	case "dns":
 		Resolve = func(name string) (string, error) {
-			ips, err := ResolveDNS(name, params.Get("server"))
+			ips, err := ResolveDNS(name, defaultParams.Get("server"))
 			if err != nil {
 				return "", err
 			}
@@ -46,21 +44,23 @@ func Init() {
 			}
 			return ips[0], nil
 		}
+	default:
+		log.Warn().Msgf("[dns] unknown default action: %s", defaultAction)
 	}
 
 	for _, rule := range cfg.DNS.Rules {
-		action, params = app.ParseAction(rule.Action)
-		switch action {
+		ruleAction, ruleParams := app.ParseAction(rule.Action)
+		switch ruleAction {
 		case "static":
 			domains := hosts.Get(rule.Name)
 			log.Debug().Msgf("[dns] static address for %s", domains)
 			for _, domain := range domains {
 				// use suffix point, because all DNS queries has it
 				// use prefix point, because support subdomains by default
-				static["."+domain+"."] = params["address"]
+				static["."+domain+"."] = ruleParams["address"]
 			}
 		default:
-			log.Warn().Msgf("[dns] unknown action: %s", action)
+			log.Warn().Msgf("[dns] unknown action: %s", ruleAction)
 		}
 	}
 
