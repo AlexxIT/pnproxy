@@ -104,6 +104,8 @@ dns:
   listen: ":53"
 ```
 
+### Rules Action
+
 Rules action supports setting `static address` only:
 
 - Useful for ad blocking.
@@ -118,19 +120,28 @@ dns:
       action: static address 192.168.1.123
 ```
 
-Default action support some DoH providers:
+Default action supports some DoH providers or simple DNS queries to a specified server:
 
-- Without this configuration - DNS, HTTP, TLS modules may not work properly.
+- Without this configuration, DNS, HTTP, TLS modules may not work properly.
+
+#### Options
+
+- **DoH**: Specify a provider such as cloudflare, dnspod, google, or quad9.
+- **DNS**: Use a simple DNS query to a specified server by IP.
 
 ```yaml
 dns:
-  default:
+  to_doh:
     # provider - cloudflare, dnspod, google, quad9
     # cache - true (default false)
     action: doh provider cloudflare cache true
+    
+  to_upstream_dns:
+    # Use simple DNS query to specified server
+    action: dns server 8.8.8.8
 ```
 
-Total config:
+### Total Config
 
 ```yaml
 dns:
@@ -140,8 +151,10 @@ dns:
       action: static address 127.0.0.1
     - name: list1 list2 site4.com site5.net
       action: static address 192.168.1.123
-  default:
+  to_doh:
     action: doh provider cloudflare cache true
+  to_upstream_dns:
+    action: dns server 8.8.8.8 cache true
 ```
 
 ## Module: HTTP
