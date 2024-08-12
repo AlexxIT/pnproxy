@@ -61,16 +61,25 @@ func Test_ResolveDNS(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			name: "CNAME resolution for domain cname.info",
+			args: args{
+				hostname:  "cname.info",
+				dnsServer: "8.8.8.8",
+			},
+			want:    []string{"43.142.246.57"},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ResolveDNS(tt.args.hostname, tt.args.dnsServer)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("resolveUsingCustomDNS() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ResolveDNS() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("resolveUsingCustomDNS() = %v, want %v", got, tt.want)
+				t.Errorf("ResolveDNS() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -2,9 +2,12 @@ package dns
 
 import (
 	"fmt"
-	"golang.org/x/net/dns/dnsmessage"
 	"net"
+	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 func ResolveDNS(hostname, dnsServer string) ([]string, error) {
@@ -14,6 +17,16 @@ func ResolveDNS(hostname, dnsServer string) ([]string, error) {
 		{
 			Name:  dnsmessage.MustNewName(hostname + "."),
 			Type:  dnsmessage.TypeA,
+			Class: dnsmessage.ClassINET,
+		},
+		{
+			Name:  dnsmessage.MustNewName(hostname + "."),
+			Type:  dnsmessage.TypeAAAA,
+			Class: dnsmessage.ClassINET,
+		},
+		{
+			Name:  dnsmessage.MustNewName(hostname + "."),
+			Type:  dnsmessage.TypeCNAME,
 			Class: dnsmessage.ClassINET,
 		},
 	}
@@ -53,17 +66,47 @@ func ResolveDNS(hostname, dnsServer string) ([]string, error) {
 		return nil, fmt.Errorf("failed to unpack DNS response: %v", err)
 	}
 
-	var ips []string
+	var results []string
 	for _, answer := range res.Answers {
-		if answer.Header.Type == dnsmessage.TypeA {
+		switch answer.Header.Type {
+		case dnsmessage.TypeA:
 			ip := answer.Body.(*dnsmessage.AResource).A
-			ips = append(ips, net.IP(ip[:]).String())
+			results = append(results, net.IP(ip[:]).String())
+		case dnsmessage.TypeAAAA:
+			ip := answer.Body.(*dnsmessage.AAAAResource).AAAA
+			results = append(results, net.IP(ip[:]).String())
+		case dnsmessage.TypeCNAME:
+			cname := answer.Body.(*dnsmessage.CNAMEResource).CNAME.String()
+			// Recursively resolve the CNAME target
+
+			cnameResults, err := ResolveDNS(strings.TrimSuffix(cname, "."), dnsServer)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, cnameResults...)
+		default:
+			log.Trace().Msgf("[dns] unknown dnsmessage type: %s", answer.Header.Type.String())
 		}
 	}
 
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("no A records found for %s", hostname)
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no valid IP addresses found for %s", hostname)
 	}
 
-	return ips, nil
+	results = uniqueStrings(results)
+
+	return results, nil
+}
+func uniqueStrings(input []string) []string {
+	uniqueMap := make(map[string]bool)
+	uniqueSlice := []string{}
+
+	for _, str := range input {
+		if _, exists := uniqueMap[str]; !exists {
+			uniqueMap[str] = true
+			uniqueSlice = append(uniqueSlice, str)
+		}
+	}
+
+	return uniqueSlice
 }
