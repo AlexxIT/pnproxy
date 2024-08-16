@@ -35,15 +35,19 @@ func Init() {
 		Resolve = ResolveDoH
 	case "dns":
 		Resolve = func(name string) (string, error) {
-			ips, err := ResolveDNS(name, defaultParams.Get("server"))
-			if err != nil {
-				return "", err
+			for _, server := range defaultParams["server"] {
+				ips, err := ResolveDNS(name, server)
+				if err != nil {
+					continue
+				}
+				if len(ips) == 0 {
+					continue
+				}
+				return ips[0], nil
 			}
-			if len(ips) == 0 {
-				return "", fmt.Errorf("no IP addresses found for %s", name)
-			}
-			return ips[0], nil
+			return "", fmt.Errorf("no IP addresses found for %s", name)
 		}
+
 	default:
 		log.Warn().Msgf("[dns] unknown default action: %s", defaultAction)
 	}

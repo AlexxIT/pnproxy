@@ -127,16 +127,20 @@ Default action supports some DoH providers or simple DNS queries to a specified 
 #### Options
 
 - **DoH**: Specify a provider such as cloudflare, dnspod, google, or quad9.
+
+```yaml
+dns:
+  default:
+    # provider - cloudflare, dnspod, google, quad9
+    # cache - true (default false)
+    action: doh provider cloudflare cache true
+```
+
 - **DNS**: Use a simple DNS query to a specified server by IP.
 
 ```yaml
 dns:
-  to_doh:
-    # provider - cloudflare, dnspod, google, quad9
-    # cache - true (default false)
-    action: doh provider cloudflare cache true
-    
-  to_upstream_dns:
+  default:
     # Use simple DNS query to specified server
     action: dns server 8.8.8.8
 ```
@@ -151,10 +155,8 @@ dns:
       action: static address 127.0.0.1
     - name: list1 list2 site4.com site5.net
       action: static address 192.168.1.123
-  to_doh:
-    action: doh provider cloudflare cache true
-  to_upstream_dns:
-    action: dns server 8.8.8.8 cache true
+  default:
+    action: dns server 8.8.8.8 server 8.8.4.4 cache true
 ```
 
 ## Module: HTTP
