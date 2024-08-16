@@ -1,112 +1,60 @@
 package dns
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
 	"time"
-
-	"github.com/rs/zerolog/log"
-	"golang.org/x/net/dns/dnsmessage"
 )
 
-func ResolveDNS(hostname, dnsServer string) ([]string, error) {
-	var msg dnsmessage.Message
-	msg.Header.RecursionDesired = true
-	msg.Questions = []dnsmessage.Question{
-		{
-			Name:  dnsmessage.MustNewName(hostname + "."),
-			Type:  dnsmessage.TypeA,
-			Class: dnsmessage.ClassINET,
-		},
-		{
-			Name:  dnsmessage.MustNewName(hostname + "."),
-			Type:  dnsmessage.TypeAAAA,
-			Class: dnsmessage.ClassINET,
-		},
-		{
-			Name:  dnsmessage.MustNewName(hostname + "."),
-			Type:  dnsmessage.TypeCNAME,
-			Class: dnsmessage.ClassINET,
-		},
+// ResolveDNS resolves the given domain name using a specified DNS server and returns a list of IP addresses.
+//
+// Parameters:
+//   - domain: The domain name to resolve.
+//   - dnsServer: The address of the DNS server to use for resolution. It can include an optional port number,
+//     otherwise, it defaults to port 53.
+//
+// Returns:
+//   - A slice of strings containing the resolved IP addresses.
+//   - An error if the domain cannot be resolved or if no records are found.
+//
+// The function creates a custom DNS resolver that uses the specified DNS server. If the DNS server address
+// does not specify a port, port 53 is assumed. A context with a timeout of 5 seconds is used to limit the
+// duration of the DNS resolution attempt. The function only attempts to resolve IPv4 addresses.
+func ResolveDNS(domain string, dnsServer string) ([]string, error) {
+	dnsHost, dnsPort, hasPort := strings.Cut(dnsServer, ":")
+	if !hasPort {
+		dnsPort = "53"
 	}
+	dnsServer = net.JoinHostPort(dnsHost, dnsPort)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+	defer cancel()
+	systemResolver := net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
 
-	query, err := msg.Pack()
+		var c net.Conn
+		var err error
+
+		var d net.Dialer
+		c, err = d.DialContext(ctx, network, dnsServer)
+
+		if err != nil {
+			return nil, err
+		}
+		return c, nil
+	}}
+	ips, err := systemResolver.LookupIP(ctx, "ip4", domain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack DNS message: %v", err)
-	}
-
-	serverAddr, err := net.ResolveUDPAddr("udp", dnsServer+":53")
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve DNS server address: %v", err)
-	}
-
-	conn, err := net.DialUDP("udp", nil, serverAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to dial UDP: %v", err)
-	}
-	defer conn.Close()
-
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
-
-	_, err = conn.Write(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send DNS query: %v", err)
-	}
-
-	response := make([]byte, 512)
-	n, err := conn.Read(response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read DNS response: %v", err)
-	}
-
-	var res dnsmessage.Message
-	err = res.Unpack(response[:n])
-	if err != nil {
-		return nil, fmt.Errorf("failed to unpack DNS response: %v", err)
+		return nil, fmt.Errorf("could not resolve the domain(system)")
 	}
 
 	var results []string
-	for _, answer := range res.Answers {
-		switch answer.Header.Type {
-		case dnsmessage.TypeA:
-			ip := answer.Body.(*dnsmessage.AResource).A
-			results = append(results, net.IP(ip[:]).String())
-		case dnsmessage.TypeAAAA:
-			ip := answer.Body.(*dnsmessage.AAAAResource).AAAA
-			results = append(results, net.IP(ip[:]).String())
-		case dnsmessage.TypeCNAME:
-			cname := answer.Body.(*dnsmessage.CNAMEResource).CNAME.String()
-			// Recursively resolve the CNAME target
 
-			cnameResults, err := ResolveDNS(strings.TrimSuffix(cname, "."), dnsServer)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, cnameResults...)
-		default:
-			log.Trace().Msgf("[dns] unknown dnsmessage type: %s", answer.Header.Type.String())
-		}
+	for _, ip := range ips {
+		results = append(results, ip.String())
 	}
-
-	if len(results) == 0 {
-		return nil, fmt.Errorf("no valid IP addresses found for %s", hostname)
+	if len(results) > 0 {
+		return results, nil
 	}
-
-	results = uniqueStrings(results)
-
-	return results, nil
-}
-func uniqueStrings(input []string) []string {
-	uniqueMap := make(map[string]bool)
-	uniqueSlice := []string{}
-
-	for _, str := range input {
-		if _, exists := uniqueMap[str]; !exists {
-			uniqueMap[str] = true
-			uniqueSlice = append(uniqueSlice, str)
-		}
-	}
-
-	return uniqueSlice
+	return nil, fmt.Errorf("no record found(system)")
 }

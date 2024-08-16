@@ -70,6 +70,15 @@ func Test_ResolveDNS(t *testing.T) {
 			want:    []string{"43.142.246.57"},
 			wantErr: false,
 		},
+		{
+			name: "Custom DNS test",
+			args: args{
+				hostname:  "reg.null",
+				dnsServer: "134.195.4.2",
+			},
+			want:    []string{"45.33.79.74"},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
