@@ -8,7 +8,6 @@ import (
 
 	"github.com/AlexxIT/pnproxy/internal/app"
 	"github.com/AlexxIT/pnproxy/internal/hosts"
-	"github.com/likexian/doh"
 	"github.com/miekg/dns"
 	"github.com/rs/zerolog/log"
 )
@@ -126,26 +125,18 @@ func dialDNS(params url.Values) dialFunc {
 }
 
 func dialDOH(params url.Values) dialFunc {
-	var client *doh.DoH
+	conn := &dohConn{server: params.Get("server")}
 
 	switch params.Get("provider") {
 	case "cloudflare":
-		client = doh.Use(doh.CloudflareProvider)
+		conn.server = "https://cloudflare-dns.com/dns-query"
 	case "dnspod":
-		client = doh.Use(doh.DNSPodProvider)
+		conn.server = "https://1.12.12.12/dns-query"
 	case "google":
-		client = doh.Use(doh.GoogleProvider)
+		conn.server = "https://dns.google/resolve"
 	case "quad9":
-		client = doh.Use(doh.Quad9Provider)
-	default:
-		client = doh.Use()
+		conn.server = "https://9.9.9.9:5053/dns-query"
 	}
-
-	if params.Get("cache") == "true" {
-		client = client.EnableCache(true)
-	}
-
-	conn := &dohConn{client: client}
 
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		return conn, nil
