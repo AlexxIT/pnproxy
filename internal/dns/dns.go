@@ -1,11 +1,14 @@
 package dns
 
 import (
-	"math/rand"
-	"strings"
+	"context"
+	"net"
+	"net/url"
+	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
 	"github.com/AlexxIT/pnproxy/internal/hosts"
+	"github.com/likexian/doh"
 	"github.com/miekg/dns"
 	"github.com/rs/zerolog/log"
 )
@@ -23,41 +26,30 @@ func Init() {
 			} `yaml:"default"`
 		} `yaml:"dns"`
 	}
-
 	app.LoadConfig(&cfg)
 
-	action, params := app.ParseAction(cfg.DNS.Default.Action)
-	if action == "doh" {
-		initDOH(params.Get("provider"), params.Get("cache") == "true")
-	}
-
 	for _, rule := range cfg.DNS.Rules {
-		action, params = app.ParseAction(rule.Action)
+		action, params := app.ParseAction(rule.Action)
 		switch action {
 		case "static":
 			domains := hosts.Get(rule.Name)
 			log.Debug().Msgf("[dns] static address for %s", domains)
 			for _, domain := range domains {
-				// use suffix point, because all DNS queries has it
-				// use prefix point, because support subdomains by default
-				static["."+domain+"."] = params["address"]
+				addStaticIP(domain, params["address"])
 			}
 		default:
 			log.Warn().Msgf("[dns] unknown action: %s", action)
 		}
 	}
 
+	if dial := parseDefaultAction(cfg.DNS.Default.Action); dial != nil {
+		net.DefaultResolver.PreferGo = true
+		net.DefaultResolver.Dial = dial
+	}
+
 	if cfg.DNS.Listen != "" {
 		go serve(cfg.DNS.Listen)
 	}
-}
-
-var static = map[string][]string{
-	"cloudflare-dns.com.": {"104.16.249.249", "104.16.248.249"},
-	"dns.google.":         {"8.8.4.4", "8.8.8.8"},
-	"dns9.quad9.net.":     {"9.9.9.9", "149.112.112.9"},
-	"dns10.quad9.net.":    {"9.9.9.10", "149.112.112.10"},
-	"dns11.quad9.net.":    {"9.9.9.11", "149.112.112.11"},
 }
 
 func serve(address string) {
@@ -79,41 +71,82 @@ func serve(address string) {
 	}
 }
 
-func parseQuery(m *dns.Msg) {
-	for _, q := range m.Question {
-		if q.Qtype == dns.TypeA {
-			ip := resolveStatic(q.Name)
+func parseQuery(query *dns.Msg) {
+	for _, question := range query.Question {
+		if question.Qtype == dns.TypeA {
+			ips, _ := lookupStaticIP(question.Name)
 
-			if ip == "" {
-				if client == nil {
-					continue
-				}
-				if ip, _ = Resolve(q.Name); ip == "" {
-					continue
-				}
+			if ips == nil {
+				ips, _ = net.LookupIP(question.Name)
 			}
 
-			log.Trace().Msgf("[dns] resolve domain=%s ipv4=%s", q.Name, ip)
-
-			rr, err := dns.NewRR(q.Name + " A " + ip + "\n")
-			if err != nil {
-				continue
+			for _, ip := range ips {
+				if ip.To4() != nil {
+					rr := &dns.A{
+						Hdr: dns.RR_Header{
+							Name:   question.Name,
+							Rrtype: question.Qtype,
+							Class:  question.Qclass,
+							Ttl:    3600,
+						},
+						A: ip,
+					}
+					query.Answer = append(query.Answer, rr)
+				}
 			}
-
-			m.Answer = append(m.Answer, rr)
 		}
 	}
 }
 
-func resolveStatic(name string) string {
-	name = "." + name
-	for suffix, items := range static {
-		if strings.HasSuffix(name, suffix) {
-			if len(items) == 1 {
-				return items[0]
-			}
-			return items[rand.Int()%len(items)]
+type dialFunc func(ctx context.Context, network, address string) (net.Conn, error)
+
+func parseDefaultAction(raw string) dialFunc {
+	if raw != "" {
+		action, params := app.ParseAction(raw)
+		switch action {
+		case "dns":
+			return dialDNS(params)
+		case "doh":
+			return dialDOH(params)
 		}
 	}
-	return ""
+	return nil
+}
+
+func dialDNS(params url.Values) dialFunc {
+	if !params.Has("server") {
+		return nil
+	}
+	dialer := net.Dialer{Timeout: 5 * time.Second}
+	address := params.Get("server") + ":53"
+	return func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, network, address)
+	}
+}
+
+func dialDOH(params url.Values) dialFunc {
+	var client *doh.DoH
+
+	switch params.Get("provider") {
+	case "cloudflare":
+		client = doh.Use(doh.CloudflareProvider)
+	case "dnspod":
+		client = doh.Use(doh.DNSPodProvider)
+	case "google":
+		client = doh.Use(doh.GoogleProvider)
+	case "quad9":
+		client = doh.Use(doh.Quad9Provider)
+	default:
+		client = doh.Use()
+	}
+
+	if params.Get("cache") == "true" {
+		client = client.EnableCache(true)
+	}
+
+	conn := &dohConn{client: client}
+
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		return conn, nil
+	}
 }

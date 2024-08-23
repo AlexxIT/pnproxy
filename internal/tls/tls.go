@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
-	"github.com/AlexxIT/pnproxy/internal/dns"
 	"github.com/AlexxIT/pnproxy/internal/hosts"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/proxy"
@@ -75,15 +74,9 @@ func Handle(src net.Conn) {
 		return
 	}
 
-	host, err := dns.Resolve(domain)
-	if err != nil {
-		log.Warn().Err(err).Caller().Send()
-		return
-	}
+	log.Trace().Msgf("[tls] open remote_addr=%s domain=%s", remote, domain)
 
-	log.Trace().Msgf("[tls] open remote_addr=%s domain=%s host=%s", remote, domain, host)
-
-	handler(src, host, b[:n])
+	handler(src, domain, b[:n])
 
 	log.Trace().Msgf("[tls] close remote_addr=%s", remote)
 }

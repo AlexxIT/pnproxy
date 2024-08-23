@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
-	"github.com/AlexxIT/pnproxy/internal/dns"
 	"github.com/AlexxIT/pnproxy/internal/hosts"
 	"github.com/rs/zerolog/log"
 )
@@ -123,19 +122,7 @@ func handleRedirect(params url.Values) http.HandlerFunc {
 
 func handleTransport(transport http.RoundTripper) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		domain, suffix := r.URL.Host, ""
-		if i := strings.IndexByte(domain, ':'); i > 0 {
-			domain, suffix = domain[:i], domain[i:]
-		}
-
-		host, err := dns.Resolve(domain)
-		if err != nil {
-			log.Warn().Err(err).Caller().Send()
-			return
-		}
-
 		r.Header.Set("Host", r.Host)
-		r.URL.Host = host + suffix
 
 		res, err := transport.RoundTrip(r)
 		if err != nil {
