@@ -22,7 +22,11 @@ type dohConn struct {
 }
 
 func (d *dohConn) Read(b []byte) (n int, err error) {
-	req := d.pool.Get().(*dns.Msg)
+	req, ok := d.pool.Get().(*dns.Msg)
+	if !ok {
+		return
+	}
+
 	res := &dns.Msg{}
 	res.SetReply(req)
 
