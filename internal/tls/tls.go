@@ -28,6 +28,8 @@ func Init() {
 		} `yaml:"tls"`
 	}
 
+	cfg.TLS.Default.Action = "raw_pass"
+
 	app.LoadConfig(&cfg)
 
 	for _, rule := range cfg.TLS.Rules {

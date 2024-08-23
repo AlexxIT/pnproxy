@@ -26,6 +26,7 @@ func Init() {
 			} `yaml:"default"`
 		} `yaml:"dns"`
 	}
+
 	app.LoadConfig(&cfg)
 
 	for _, rule := range cfg.DNS.Rules {

@@ -26,6 +26,8 @@ func Init() {
 		} `yaml:"http"`
 	}
 
+	cfg.HTTP.Default.Action = "raw_pass"
+
 	app.LoadConfig(&cfg)
 
 	for _, rule := range cfg.HTTP.Rules {
