@@ -132,12 +132,14 @@ func handleRaw(params url.Values) handlerFunc {
 		port = "443"
 	}
 
+	dialer := net.Dialer{Timeout: 5 * time.Second}
+
 	return func(src net.Conn, host string, hello []byte) {
 		if forceHost != "" {
 			host = forceHost
 		}
 
-		dst, err := net.DialTimeout("tcp", host+":"+port, 5*time.Second)
+		dst, err := dialer.Dial("tcp", host+":"+port)
 		if err != nil {
 			log.Warn().Err(err).Caller().Send()
 			return
