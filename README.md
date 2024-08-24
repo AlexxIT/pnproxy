@@ -18,6 +18,7 @@ Types:
 
 - Binary - [nightly.link](https://nightly.link/AlexxIT/pnproxy/workflows/build/master)
 - Docker - [alexxit/pnproxy](https://hub.docker.com/r/alexxit/pnproxy)
+- Home Assistant Add-on - [alexxit/hassio-addons](https://github.com/AlexxIT/hassio-addons)
 
 ## Setup
 
@@ -29,36 +30,40 @@ And want it to work on all home devices without additional configuration on each
 2. Create `pnproxy.yaml`
    ```yaml
    hosts:
-     adblock: doubleclick.com doubleclick.net
+     adblock: doubleclick.net googlesyndication.com
      tunnel: twitter.com twimg.com t.co x.com
    
    dns:
      listen: ":53"
      rules:
-       - name: adblock
+       - name: adblock                         # name from hosts block
          action: static address 127.0.0.1      # block this sites
-       - name: tunnel
+       - name: tunnel                          # name from hosts block
          action: static address 192.168.1.123  # redirect this sites to pnproxy
      default:
-       action: doh provider cloudflare cache true  # resolve DNS for all other sites
+       action: dns server 8.8.8.8              # resolve DNS for all other sites
    
    http:
      listen: ":80"
      rules:
-       - name: tunnel
-         action: redirect scheme https    # redirect this sites from HTTP to TLS module
+       - name: tunnel                          # name from hosts block
+         action: redirect scheme https         # redirect this sites from HTTP to TLS module
+     default:
+       action: raw_pass
    
    tls:
      listen: ":443"
      rules:
-       - name: tunnel
+       - name: tunnel                          # name from hosts block
          action: proxy_pass host 123.123.123.123 port 3128  # forward this sites to external HTTP proxy
+     default:
+       action: raw_pass
    
    proxy:
-     listen: ":8080"  # optionally run local HTTP proxy
+     listen: ":8080"                           # optionally run local HTTP proxy
    
    log:
-     level: trace  # optionally increase log level (default - info)
+     level: trace                              # optionally increase log level (default - info)
    ```
 3. Setup DNS server for your home router to `192.168.1.123`.
 
@@ -118,16 +123,21 @@ dns:
       action: static address 192.168.1.123
 ```
 
-Default action support some DoH providers:
+Default action supports `dns` upstream:
 
-- Without this configuration - DNS, HTTP, TLS modules may not work properly.
+```yaml
+dns:
+  default:
+    action: dns server 8.8.8.8
+```
+
+Default action supports `doh` upstream:
 
 ```yaml
 dns:
   default:
     # provider - cloudflare, dnspod, google, quad9
-    # cache - true (default false)
-    action: doh provider cloudflare cache true
+    action: doh provider cloudflare
 ```
 
 Total config:
@@ -195,7 +205,7 @@ Default action support all rules actions:
 ```yaml
 http:
   default:
-    action: raw_pass  # default block
+    action: raw_pass
 ```
 
 ## Module: TLS
@@ -253,7 +263,7 @@ Default action support all rules actions:
 ```yaml
 tls:
   default:
-    action: raw_pass  # default block
+    action: raw_pass
 ```
 
 ## Module: Proxy
@@ -266,13 +276,24 @@ Enable server:
 ```yaml
 proxy:
   listen: ":8080"
+```
 
-dns:
-   default: ...
-http:
-  rules: ...
-  default: ...
-tls:
-  rules: ...
-  default: ...
+## Tips and Tricks
+
+**Mikrotik DNS fail over script**
+
+- Add as System > Scheduler > Interval `00:01:00`
+
+```
+:global server "192.168.1.123"
+
+:do {
+  :resolve google.com server $server
+} on-error={
+  :global server "8.8.8.8"
+}
+
+:if ([/ip dns get servers] != $server) do={
+  /ip dns set servers=$server
+}
 ```
