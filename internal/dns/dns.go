@@ -129,10 +129,12 @@ func dialDOH(params url.Values) dialFunc {
 
 	switch params.Get("provider") {
 	case "cloudflare":
+		// or https://1.1.1.1/dns-query
 		conn.server = "https://cloudflare-dns.com/dns-query"
 	case "dnspod":
 		conn.server = "https://1.12.12.12/dns-query"
 	case "google":
+		// or https://8.8.8.8/resolve
 		conn.server = "https://dns.google/resolve"
 	case "quad9":
 		conn.server = "https://9.9.9.9:5053/dns-query"

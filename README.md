@@ -297,3 +297,7 @@ proxy:
   /ip dns set servers=$server
 }
 ```
+
+## Known bugs
+
+In rare cases, due to [HTTP/2 connection coalescing](https://blog.cloudflare.com/connection-coalescing-experiments) technology, some site may not work properly when using a TCP/TLS Layer 4 proxy. In HTTP proxy mode everything works fine. Everything works fine in Safari browser (it doesn't support this technology). In Firefox, this feature can be disabled - `network.http.http2.coalesce-hostnames`.
