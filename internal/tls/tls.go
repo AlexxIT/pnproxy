@@ -69,6 +69,10 @@ func Handle(src net.Conn) {
 	}
 
 	domain := parseSNI(b[:n])
+	if domain == "" {
+		log.Warn().Msgf("[tls] skip empty domain remote_addr=%s data=%x", remote, b[:n])
+		return
+	}
 
 	handler := findHandler(domain)
 	if handler == nil {
