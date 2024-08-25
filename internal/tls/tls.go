@@ -95,11 +95,13 @@ func findHandler(domain string) handlerFunc {
 
 func serve(address string) {
 	log.Info().Msgf("[tls] listen=%s", address)
+
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Error().Err(err).Caller().Send()
 		return
 	}
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/url"
 	"time"
@@ -108,38 +109,31 @@ func parseDefaultAction(raw string) dialFunc {
 			return dialDNS(params)
 		case "doh":
 			return dialDOH(params)
+		case "dot":
+			return dialDOT(params)
 		}
 	}
 	return nil
 }
 
 func dialDNS(params url.Values) dialFunc {
-	if !params.Has("server") {
-		return nil
-	}
 	dialer := net.Dialer{Timeout: 5 * time.Second}
-	address := params.Get("server") + ":53"
-	return func(ctx context.Context, network, _ string) (net.Conn, error) {
-		return dialer.DialContext(ctx, network, address)
+	address := server(params) + ":53"
+	return func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "udp", address)
+	}
+}
+
+func dialDOT(params url.Values) dialFunc {
+	dialer := tls.Dialer{NetDialer: &net.Dialer{Timeout: 5 * time.Second}}
+	address := server(params) + ":853"
+	return func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "tcp", address)
 	}
 }
 
 func dialDOH(params url.Values) dialFunc {
-	conn := &dohConn{server: params.Get("server")}
-
-	switch params.Get("provider") {
-	case "cloudflare":
-		// or https://1.1.1.1/dns-query
-		conn.server = "https://cloudflare-dns.com/dns-query"
-	case "dnspod":
-		conn.server = "https://1.12.12.12/dns-query"
-	case "google":
-		// or https://8.8.8.8/resolve
-		conn.server = "https://dns.google/resolve"
-	case "quad9":
-		conn.server = "https://9.9.9.9:5053/dns-query"
-	}
-
+	conn := newDoHConn(server(params))
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		return conn, nil
 	}
