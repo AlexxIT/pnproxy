@@ -6,14 +6,22 @@ import (
 	"strings"
 )
 
-func Init() {
-	var configName string
+var (
+	Version string
+	Info    = make(map[string]any)
+)
 
-	flag.StringVar(&configName, "config", "pnproxy.yaml", "Path to config file")
+func Init() {
+	var configPath string
+
+	flag.StringVar(&configPath, "config", "pnproxy.yaml", "Path to config file")
 	flag.Parse()
 
-	initConfig(configName)
+	initConfig(configPath)
 	initLog()
+
+	Info["version"] = Version
+	Info["config_path"] = configPath
 }
 
 func ParseAction(raw string) (action string, params url.Values) {

@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/AlexxIT/pnproxy/internal/api"
 	"github.com/AlexxIT/pnproxy/internal/app"
 	"github.com/AlexxIT/pnproxy/internal/dns"
 	"github.com/AlexxIT/pnproxy/internal/hosts"
@@ -14,9 +15,12 @@ import (
 )
 
 func main() {
+	app.Version = "alpha"
+
 	app.Init()   // before all
 	hosts.Init() // before others
 
+	api.Init()
 	dns.Init()
 	tls.Init()
 	http.Init()
