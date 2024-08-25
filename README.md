@@ -254,8 +254,7 @@ Rules action supports setting `split_pass`:
 tls:
   rules:
     - name: list1 list2 site4.com site5.net
-      # sleep - X/Y format: every X bytes sleep for Y (ms, us, ns)
-      action: split_pass sleep 100/1ms
+      action: split_pass
 ```
 
 Default action support all rules actions:
