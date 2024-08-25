@@ -2,7 +2,41 @@ package tls
 
 import (
 	"encoding/binary"
+	"errors"
+	"io"
 )
+
+func readClientHello(r io.Reader) ([]byte, error) {
+	buf := make([]byte, 16*1024)
+
+	// read at least 5 bytes
+	n1, err := io.ReadAtLeast(r, buf, 5)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = buf[4]
+
+	if buf[0] != 0x16 {
+		return nil, errors.New("tls: not a handshake")
+	}
+
+	n := int(5 + uint16(buf[4]) | uint16(buf[3])<<8)
+	if n1 == n {
+		return buf[:n1], nil
+	}
+
+	if n1 > n {
+		return nil, errors.New("tls: too big handshake")
+	}
+
+	n2, err := io.ReadAtLeast(r, buf[n1:], n-n1)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf[:n1+n2], nil
+}
 
 func parseSNI(hello []byte) string {
 	// https://datatracker.ietf.org/doc/html/rfc8446#page-27

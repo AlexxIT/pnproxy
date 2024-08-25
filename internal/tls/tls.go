@@ -61,16 +61,15 @@ func Handle(src net.Conn) {
 
 	remote := src.RemoteAddr().String()
 
-	b := make([]byte, 1024*8)
-	n, err := src.Read(b)
+	hello, err := readClientHello(src)
 	if err != nil {
 		log.Warn().Err(err).Caller().Send()
 		return
 	}
 
-	domain := parseSNI(b[:n])
+	domain := parseSNI(hello)
 	if domain == "" {
-		log.Warn().Msgf("[tls] skip empty domain remote_addr=%s data=%x", remote, b[:n])
+		log.Warn().Msgf("[tls] skip empty domain remote_addr=%s data=%x", remote, hello)
 		return
 	}
 
@@ -82,7 +81,7 @@ func Handle(src net.Conn) {
 
 	log.Trace().Msgf("[tls] open remote_addr=%s domain=%s", remote, domain)
 
-	handler(src, domain, b[:n])
+	handler(src, domain, hello)
 
 	log.Trace().Msgf("[tls] close remote_addr=%s", remote)
 }
