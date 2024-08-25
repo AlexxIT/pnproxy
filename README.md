@@ -99,7 +99,7 @@ hosts:
 
 Run DNS server and act as DNS proxy.
 
-- Can protect from MITM DNS attack using [DNS over HTTPS](https://en.wikipedia.org/wiki/DNS_over_HTTPS) 
+- Can protect from MITM DNS attack using [DNS over TLS](https://en.wikipedia.org/wiki/DNS_over_TLS) or [DNS over HTTPS](https://en.wikipedia.org/wiki/DNS_over_HTTPS) 
 - Can work as AdBlock like [AdGuard](https://adguard.com/)
 
 Enable server:
@@ -123,21 +123,25 @@ dns:
       action: static address 192.168.1.123
 ```
 
-Default action supports `dns` upstream:
+Default action supports [DNS](https://en.wikipedia.org/wiki/Domain_Name_System), [DOT](https://en.wikipedia.org/wiki/DNS_over_TLS) and [DOH](https://en.wikipedia.org/wiki/DNS_over_HTTPS) upstream:
+
+- Important to use server IP-address, instead of a domain name
 
 ```yaml
 dns:
   default:
+    # action - dns or dot or doh
     action: dns server 8.8.8.8
 ```
 
-Default action supports `doh` upstream:
+Support build-in providers - `cloudflare`, `google`, `quad9`, `opendns`, `yandex`:
+
+- all this providers support DNS, DOH and DOT technologies.
 
 ```yaml
 dns:
   default:
-    # provider - cloudflare, dnspod, google, quad9
-    action: doh provider cloudflare
+    action: dot provider google
 ```
 
 Total config:
@@ -151,7 +155,7 @@ dns:
     - name: list1 list2 site4.com site5.net
       action: static address 192.168.1.123
   default:
-    action: doh provider cloudflare cache true
+    action: doh provider cloudflare
 ```
 
 ## Module: HTTP
