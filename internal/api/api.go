@@ -22,6 +22,7 @@ func Init() {
 	}
 
 	http.HandleFunc("GET /api", api)
+	http.HandleFunc("GET /api/request", apiRequest)
 	http.HandleFunc("GET /api/stack", apiStack)
 
 	go serve(cfg.API.Listen)
