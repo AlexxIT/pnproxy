@@ -163,41 +163,41 @@ func handleRaw(params url.Values) handlerFunc {
 
 func handleSplit(params url.Values) handlerFunc {
 	return func(src net.Conn, host string, hello []byte) {
-		for i := byte(1); i <= 5; i++ {
+		for i := byte(0); i < 3; i++ {
 			if err := handleSplitTimeout(src, host, hello, i); err != nil {
 				continue
 			}
 			return
 		}
-		log.Warn().Msgf("[tcp] fail host=%s", host)
+		log.Warn().Msgf("[tcp] split fail host=%s", host)
 	}
 }
 
-func handleSplitTimeout(src net.Conn, host string, hello []byte, sec byte) error {
-	timeout := time.Duration(sec) * time.Second
-
-	dst, err := net.DialTimeout("tcp", host+":443", timeout)
+func handleSplitTimeout(src net.Conn, host string, hello []byte, retry byte) error {
+	dst, err := net.DialTimeout("tcp", host+":443", 5*time.Second)
 	if err != nil {
 		return err
 	}
 	defer dst.Close()
 
-	_ = dst.SetDeadline(time.Now().Add(timeout))
-
-	if err = writeSplit(dst, hello); err != nil {
+	delay := time.Duration(retry) * 3 * time.Millisecond // 0ms, 3ms, 6ms
+	if err = writeSplit(dst, hello, delay); err != nil {
 		return err
 	}
+
+	timeout := time.Duration(retry+1) * time.Second // 1s, 2s, 3s
+	_ = dst.SetReadDeadline(time.Now().Add(timeout))
 
 	b, err := dst.Read(hello)
 	if err != nil {
 		return err
 	}
 
-	if sec > 1 {
-		log.Debug().Msgf("[tcp] connect host=%s retry=%d", host, sec)
-	}
+	_ = dst.SetReadDeadline(time.Time{})
 
-	_ = dst.SetDeadline(time.Time{})
+	if retry > 0 {
+		log.Debug().Msgf("[tcp] split ok host=%s retry=%d", host, retry)
+	}
 
 	if _, err = src.Write(hello[:b]); err != nil {
 		return nil
@@ -209,10 +209,22 @@ func handleSplitTimeout(src net.Conn, host string, hello []byte, sec byte) error
 	return nil
 }
 
-func writeSplit(conn net.Conn, hello []byte) error {
-	for _, b := range hello {
-		if _, err := conn.Write([]byte{b}); err != nil {
-			return err
+func writeSplit(conn net.Conn, hello []byte, delay time.Duration) error {
+	if delay == 0 {
+		for _, b := range hello {
+			if _, err := conn.Write([]byte{b}); err != nil {
+				return err
+			}
+		}
+	} else {
+		t0 := time.Now()
+		for i, b := range hello {
+			if dt := t0.Add(time.Duration(i) * delay).Sub(time.Now()); dt > 0 {
+				time.Sleep(dt)
+			}
+			if _, err := conn.Write([]byte{b}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
