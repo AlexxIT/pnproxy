@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -23,4 +25,6 @@ func initLog() {
 	}
 
 	log.Logger = log.Logger.Level(lvl)
+
+	zerolog.TimeFieldFormat = time.RFC3339Nano
 }
