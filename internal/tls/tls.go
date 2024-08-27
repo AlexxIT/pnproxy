@@ -161,31 +161,38 @@ func handleRaw(params url.Values) handlerFunc {
 	}
 }
 
+var splitRetry = map[string]byte{}
+
 func handleSplit(params url.Values) handlerFunc {
 	return func(src net.Conn, host string, hello []byte) {
-		for i := byte(0); i < 3; i++ {
-			if err := handleSplitTimeout(src, host, hello, i); err != nil {
-				continue
+		for retry := splitRetry[host]; retry < 3; retry++ {
+			if err := handleSplitRetry(src, host, hello, retry); err == nil {
+				if retry > 0 {
+					log.Debug().Msgf("[tcp] split ok host=%s retry=%d", host, retry)
+					splitRetry[host] = retry
+				}
+				return
 			}
-			return
 		}
 		log.Warn().Msgf("[tcp] split fail host=%s", host)
 	}
 }
 
-func handleSplitTimeout(src net.Conn, host string, hello []byte, retry byte) error {
+func handleSplitRetry(src net.Conn, host string, hello []byte, retry byte) error {
 	dst, err := net.DialTimeout("tcp", host+":443", 5*time.Second)
 	if err != nil {
 		return err
 	}
 	defer dst.Close()
 
-	delay := time.Duration(retry) * 3 * time.Millisecond // 0ms, 3ms, 6ms
+	k := 3 * time.Duration(retry) // 0, 3, 6
+
+	delay := k * time.Millisecond // 0ms, 3ms, 6ms
 	if err = writeSplit(dst, hello, delay); err != nil {
 		return err
 	}
 
-	timeout := time.Duration(retry+1) * time.Second // 1s, 2s, 3s
+	timeout := 2*time.Second + k*time.Second // 2s, 5s, 8s
 	_ = dst.SetReadDeadline(time.Now().Add(timeout))
 
 	b, err := dst.Read(hello)
@@ -194,10 +201,6 @@ func handleSplitTimeout(src net.Conn, host string, hello []byte, retry byte) err
 	}
 
 	_ = dst.SetReadDeadline(time.Time{})
-
-	if retry > 0 {
-		log.Debug().Msgf("[tcp] split ok host=%s retry=%d", host, retry)
-	}
 
 	if _, err = src.Write(hello[:b]); err != nil {
 		return nil
