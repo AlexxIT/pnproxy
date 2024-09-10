@@ -21,7 +21,7 @@ func readClientHello(r io.Reader) ([]byte, error) {
 		return nil, errors.New("tls: not a handshake")
 	}
 
-	n := int(5 + uint16(buf[4]) | uint16(buf[3])<<8)
+	n := 5 + (int(buf[3])<<8 | int(buf[4]))
 	if n1 == n {
 		return buf[:n1], nil
 	}
