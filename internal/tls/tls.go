@@ -61,11 +61,15 @@ func Handle(src net.Conn) {
 
 	remote := src.RemoteAddr().String()
 
+	_ = src.SetReadDeadline(time.Now().Add(5 * time.Second))
+
 	hello, err := readClientHello(src)
 	if err != nil {
 		log.Warn().Err(err).Caller().Send()
 		return
 	}
+
+	_ = src.SetReadDeadline(time.Time{})
 
 	domain := parseSNI(hello)
 	if domain == "" {
