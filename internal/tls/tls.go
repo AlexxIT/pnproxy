@@ -160,8 +160,7 @@ func handleRaw(params url.Values) handlerFunc {
 			return
 		}
 
-		go io.Copy(dst, src)
-		io.Copy(src, dst)
+		ioCopy(dst, src)
 	}
 }
 
@@ -210,8 +209,7 @@ func handleSplitRetry(src net.Conn, host string, hello []byte, retry byte) error
 		return nil
 	}
 
-	go io.Copy(dst, src)
-	io.Copy(src, dst)
+	ioCopy(dst, src)
 
 	return nil
 }
@@ -285,8 +283,7 @@ func handleProxyHTTP(params url.Values) handlerFunc {
 			return
 		}
 
-		go io.Copy(dst, src)
-		io.Copy(src, dst)
+		ioCopy(dst, src)
 	}
 }
 
@@ -318,7 +315,16 @@ func handleProxySOCKS5(params url.Values) handlerFunc {
 			return
 		}
 
-		go io.Copy(dst, src)
-		io.Copy(src, dst)
+		ioCopy(dst, src)
 	}
+}
+
+func ioCopy(dst, src net.Conn) {
+	go func() {
+		_, _ = io.Copy(dst, src)
+		_ = dst.Close()
+	}()
+
+	_, _ = io.Copy(src, dst)
+	_ = src.Close()
 }
