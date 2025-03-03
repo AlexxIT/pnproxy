@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
@@ -165,14 +166,20 @@ func handleRaw(params url.Values) handlerFunc {
 }
 
 var splitRetry = map[string]byte{}
+var splitMu sync.Mutex
 
 func handleSplit(params url.Values) handlerFunc {
 	return func(src net.Conn, host string, hello []byte) {
-		for retry := splitRetry[host]; retry < 3; retry++ {
+		splitMu.Lock()
+		retry := splitRetry[host]
+		splitMu.Unlock()
+		for ; retry < 3; retry++ {
 			if err := handleSplitRetry(src, host, hello, retry); err == nil {
 				if retry > 0 {
 					log.Debug().Msgf("[tcp] split ok host=%s retry=%d", host, retry)
+					splitMu.Lock()
 					splitRetry[host] = retry
+					splitMu.Unlock()
 				}
 				return
 			}
