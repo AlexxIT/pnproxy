@@ -39,8 +39,8 @@ func Init() {
 			continue
 		}
 
-		for _, name := range hosts.Get(rule.Name) {
-			handlers["."+name] = handler
+		for _, name := range strings.Fields(rule.Name) {
+			handlers[name] = handler
 		}
 	}
 
@@ -50,11 +50,6 @@ func Init() {
 		go serve(cfg.TLS.Listen)
 	}
 }
-
-type handlerFunc func(src net.Conn, host string, hello []byte)
-
-var handlers = map[string]handlerFunc{}
-var defaultHandler handlerFunc
 
 func Handle(src net.Conn) {
 	defer src.Close()
@@ -77,27 +72,35 @@ func Handle(src net.Conn) {
 		return
 	}
 
-	handler := findHandler(domain)
+	handler, rule := findHandler(domain)
 	if handler == nil {
-		log.Trace().Msgf("[tls] skip remote_addr=%s domain=%s", remote, domain)
+		log.Warn().Msgf("[tls] skip remote_addr=%s domain=%s", remote, domain)
 		return
 	}
 
-	log.Trace().Msgf("[tls] open remote_addr=%s domain=%s", remote, domain)
+	log.Debug().Msgf("[tls] open remote_addr=%s domain=%s rule=%s", remote, domain, rule)
 
 	handler(src, domain, hello)
 
 	log.Trace().Msgf("[tls] close remote_addr=%s", remote)
 }
 
-func findHandler(domain string) handlerFunc {
-	domain = "." + domain
-	for k, handler := range handlers {
-		if strings.HasSuffix(domain, k) {
-			return handler
-		}
+type handlerFunc func(src net.Conn, host string, hello []byte)
+
+var handlers = map[string]handlerFunc{}
+var defaultHandler handlerFunc
+
+func findHandler(host string) (handlerFunc, string) {
+	if handler := handlers[host]; handler != nil {
+		return handler, host
 	}
-	return defaultHandler
+
+	rule := hosts.Resolve(host)
+	if handler := handlers[rule]; handler != nil {
+		return handler, rule
+	}
+
+	return defaultHandler, "default"
 }
 
 func serve(address string) {

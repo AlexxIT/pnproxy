@@ -37,8 +37,8 @@ func Init() {
 			continue
 		}
 
-		for _, name := range hosts.Get(rule.Name) {
-			handlers["."+name] = handler
+		for _, name := range strings.Fields(rule.Name) {
+			handlers[name] = handler
 		}
 	}
 
@@ -55,13 +55,13 @@ func Handle(w http.ResponseWriter, r *http.Request) {
 		domain = domain[:i]
 	}
 
-	handler := findHandler(domain)
+	handler, rule := findHandler(domain)
 	if handler == nil {
-		log.Trace().Msgf("[http] skip remote_addr=%s domain=%s", r.RemoteAddr, domain)
+		log.Warn().Msgf("[http] skip remote_addr=%s domain=%s", r.RemoteAddr, domain)
 		return
 	}
 
-	log.Trace().Msgf("[http] open remote_addr=%s domain=%s", r.RemoteAddr, domain)
+	log.Debug().Msgf("[http] open remote_addr=%s domain=%s rule=%s", r.RemoteAddr, domain, rule)
 
 	handler(w, r)
 }
@@ -69,14 +69,17 @@ func Handle(w http.ResponseWriter, r *http.Request) {
 var handlers = map[string]http.HandlerFunc{}
 var defaultHandler http.HandlerFunc
 
-func findHandler(domain string) http.HandlerFunc {
-	domain = "." + domain
-	for k, handler := range handlers {
-		if strings.HasSuffix(domain, k) {
-			return handler
-		}
+func findHandler(host string) (http.HandlerFunc, string) {
+	if handler := handlers[host]; handler != nil {
+		return handler, host
 	}
-	return defaultHandler
+
+	rule := hosts.Resolve(host)
+	if handler := handlers[rule]; handler != nil {
+		return handler, rule
+	}
+
+	return defaultHandler, "default"
 }
 
 func serve(address string) {

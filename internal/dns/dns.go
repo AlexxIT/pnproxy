@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
@@ -33,10 +34,14 @@ func Init() {
 		fields, params := app.ParseAction(rule.Action)
 		switch fields[0] {
 		case "static":
-			domains := hosts.Get(rule.Name)
-			log.Debug().Msgf("[dns] static address for %s", domains)
-			for _, domain := range domains {
-				addStaticIP(domain, params["address"])
+			names := strings.Fields(rule.Name)
+			log.Debug().Msgf("[dns] static address for %s", names)
+			for _, name := range names {
+				var ips []net.IP
+				for _, ip := range params["address"] {
+					ips = append(ips, net.ParseIP(ip))
+				}
+				static[name] = ips
 			}
 		default:
 			log.Warn().Msgf("[dns] unknown action: %s", fields)
@@ -52,6 +57,9 @@ func Init() {
 		go serve(cfg.DNS.Listen)
 	}
 }
+
+// static key is a rule name
+var static = map[string][]net.IP{}
 
 func serve(address string) {
 	log.Info().Msgf("[dns] listen=%s", address)
@@ -75,13 +83,14 @@ func serve(address string) {
 func parseQuery(query *dns.Msg, remoteAddr net.Addr) {
 	for _, question := range query.Question {
 		if question.Qtype == dns.TypeA {
-			ips, _ := lookupStaticIP(question.Name)
+			rule := hosts.Resolve(question.Name)
+			ips := static[rule]
 
 			if ips == nil {
 				ips, _ = net.LookupIP(question.Name)
 			}
 
-			log.Trace().Msgf("[dns] query remote_addr=%s name=%s ips=%s", remoteAddr, question.Name, ips)
+			log.Debug().Msgf("[dns] query remote_addr=%s name=%s rule=%s ips=%s", remoteAddr, question.Name, rule, ips)
 
 			for _, ip := range ips {
 				if ip.To4() != nil {
