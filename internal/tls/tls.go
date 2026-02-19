@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
@@ -128,8 +127,6 @@ func parseAction(raw string) handlerFunc {
 			return handleRaw(params)
 		case "proxy_pass":
 			return handleProxy(params)
-		case "split_pass":
-			return handleSplit(params)
 		}
 	}
 	return nil
@@ -163,83 +160,6 @@ func handleRaw(params url.Values) handlerFunc {
 
 		ioCopy(dst, src)
 	}
-}
-
-var splitRetry = map[string]byte{}
-var splitMu sync.Mutex
-
-func handleSplit(params url.Values) handlerFunc {
-	return func(src net.Conn, host string, hello []byte) {
-		splitMu.Lock()
-		retry := splitRetry[host]
-		splitMu.Unlock()
-		for ; retry < 3; retry++ {
-			if err := handleSplitRetry(src, host, hello, retry); err == nil {
-				if retry > 0 {
-					log.Debug().Msgf("[tcp] split ok host=%s retry=%d", host, retry)
-					splitMu.Lock()
-					splitRetry[host] = retry
-					splitMu.Unlock()
-				}
-				return
-			}
-		}
-		log.Warn().Msgf("[tcp] split fail host=%s", host)
-	}
-}
-
-func handleSplitRetry(src net.Conn, host string, hello []byte, retry byte) error {
-	dst, err := net.DialTimeout("tcp", host+":443", 5*time.Second)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-
-	k := 3 * time.Duration(retry) // 0, 3, 6
-
-	delay := k * time.Millisecond // 0ms, 3ms, 6ms
-	if err = writeSplit(dst, hello, delay); err != nil {
-		return err
-	}
-
-	timeout := 2*time.Second + k*time.Second // 2s, 5s, 8s
-	_ = dst.SetReadDeadline(time.Now().Add(timeout))
-
-	b, err := dst.Read(hello)
-	if err != nil {
-		return err
-	}
-
-	_ = dst.SetReadDeadline(time.Time{})
-
-	if _, err = src.Write(hello[:b]); err != nil {
-		return nil
-	}
-
-	ioCopy(dst, src)
-
-	return nil
-}
-
-func writeSplit(conn net.Conn, hello []byte, delay time.Duration) error {
-	if delay == 0 {
-		for _, b := range hello {
-			if _, err := conn.Write([]byte{b}); err != nil {
-				return err
-			}
-		}
-	} else {
-		t0 := time.Now()
-		for i, b := range hello {
-			if dt := t0.Add(time.Duration(i) * delay).Sub(time.Now()); dt > 0 {
-				time.Sleep(dt)
-			}
-			if _, err := conn.Write([]byte{b}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func handleProxy(params url.Values) handlerFunc {
