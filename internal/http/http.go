@@ -92,8 +92,8 @@ func serve(address string) {
 
 func parseAction(raw string) http.HandlerFunc {
 	if raw != "" {
-		action, params := app.ParseAction(raw)
-		switch action {
+		fields, params := app.ParseAction(raw)
+		switch fields[0] {
 		case "redirect":
 			return handleRedirect(params)
 		case "raw_pass":

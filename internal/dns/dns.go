@@ -30,8 +30,8 @@ func Init() {
 	app.LoadConfig(&cfg)
 
 	for _, rule := range cfg.DNS.Rules {
-		action, params := app.ParseAction(rule.Action)
-		switch action {
+		fields, params := app.ParseAction(rule.Action)
+		switch fields[0] {
 		case "static":
 			domains := hosts.Get(rule.Name)
 			log.Debug().Msgf("[dns] static address for %s", domains)
@@ -39,7 +39,7 @@ func Init() {
 				addStaticIP(domain, params["address"])
 			}
 		default:
-			log.Warn().Msgf("[dns] unknown action: %s", action)
+			log.Warn().Msgf("[dns] unknown action: %s", fields)
 		}
 	}
 
@@ -105,8 +105,8 @@ type dialFunc func(ctx context.Context, network, address string) (net.Conn, erro
 
 func parseDefaultAction(raw string) dialFunc {
 	if raw != "" {
-		action, params := app.ParseAction(raw)
-		switch action {
+		fields, params := app.ParseAction(raw)
+		switch fields[0] {
 		case "dns":
 			return dialDNS(params)
 		case "doh":

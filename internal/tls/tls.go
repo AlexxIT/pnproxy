@@ -121,8 +121,8 @@ func serve(address string) {
 
 func parseAction(raw string) handlerFunc {
 	if raw != "" {
-		action, params := app.ParseAction(raw)
-		switch action {
+		fields, params := app.ParseAction(raw)
+		switch fields[0] {
 		case "raw_pass":
 			return handleRaw(params)
 		case "proxy_pass":
