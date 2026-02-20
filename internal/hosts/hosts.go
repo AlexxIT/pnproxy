@@ -99,8 +99,8 @@ func handleHttpGet(params url.Values) func(host string) error {
 			}
 
 			if status[status1] {
-				status2, _ := httpRequest(rawURL, timeout, readBody, proxy)
-				if status[status2] {
+				status2, err2 := httpRequest(rawURL, timeout, readBody, proxy)
+				if err2 != nil || status1 == status2 {
 					// if both direct and proxy has problem status - don't use proxy
 					return nil
 				}
