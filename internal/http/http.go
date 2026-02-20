@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -114,13 +115,14 @@ func handleRedirect(params url.Values) http.HandlerFunc {
 	if params.Has("code") {
 		code, _ = strconv.Atoi(params.Get("code"))
 	}
-	scheme := params.Get("scheme")
+	scheme := "https"
+	if params.Has("scheme") {
+		scheme = params.Get("scheme")
+	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if scheme != "" {
-			r.URL.Scheme = scheme
-		}
-		w.Header().Add("Location", r.URL.String())
+		s := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.RequestURI)
+		w.Header().Add("Location", s)
 		w.WriteHeader(code)
 	}
 }
