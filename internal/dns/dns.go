@@ -145,7 +145,7 @@ func dialDOT(params url.Values) dialFunc {
 
 func dialDOH(params url.Values) dialFunc {
 	conn := newDoHConn(server(params))
-	return func(ctx context.Context, network, address string) (net.Conn, error) {
+	return func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return conn, nil
 	}
 }
