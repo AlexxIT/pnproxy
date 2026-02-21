@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
+	"github.com/AlexxIT/pnproxy/internal/hosts"
 	"github.com/rs/zerolog/log"
 )
 
@@ -22,6 +23,7 @@ func Init() {
 	}
 
 	http.HandleFunc("GET /api", api)
+	http.HandleFunc("GET /api/hosts", apiHosts)
 	http.HandleFunc("GET /api/request", apiRequest)
 	http.HandleFunc("GET /api/stack", apiStack)
 
@@ -40,4 +42,9 @@ func serve(address string) {
 func api(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(app.Info)
+}
+
+func apiHosts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(hosts.Hosts())
 }

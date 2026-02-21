@@ -159,7 +159,6 @@ func unwrapError(err error) error {
 	return err
 }
 
-	return func(host string) error {
-		return httpGetCache(host, handler2)
-	}
+func Hosts() any {
+	return httpGet
 }
