@@ -29,7 +29,7 @@ func Init() {
 			panic("TODO")
 		case "http_get":
 			httpRule = name
-			httpHandler = handleHttpGet(params)
+			httpGet = &HostChecker{Handler: handleHttpGet(params)}
 		default:
 			for _, host := range fields {
 				static[host] = name
@@ -56,8 +56,12 @@ func Resolve(host string) string {
 	}
 
 	// 2. http get
-	if httpHandler != nil {
-		if err := httpHandler(host); err != nil {
+	if httpGet != nil {
+		status, err := httpGet.Check(host)
+		if err != nil {
+			if status > 0 {
+				log.Info().Msgf("[hosts] http_get host=%s error=%v", host, err)
+			}
 			return httpRule
 		}
 	}
@@ -67,11 +71,22 @@ func Resolve(host string) string {
 
 var static = map[string]string{}
 var httpRule string
-var httpHandler handlerFunc
+var httpGet *HostChecker
 
-type handlerFunc func(host string) error
+const (
+	// StatusOK Means that direct access to the resource definitely exists.
+	StatusOK = iota + 1
+	// StatusMaybeOK Means that direct access is available, but we are not sure about it.
+	StatusMaybeOK
+	// StatusProxyOK Means that access via a proxy works better than direct access.
+	StatusProxyOK
+	// StatusMaybeError Means that there are problems with direct access, and we are not sure if a proxy will help.
+	StatusMaybeError
+	// StatusError Means that there is definitely an issue with direct access and access via proxy.
+	StatusError
+)
 
-func handleHttpGet(params url.Values) func(host string) error {
+func handleHttpGet(params url.Values) func(host string) (int, []byte, error) {
 	timeout, _ := strconv.Atoi(params.Get("timeout"))
 	readBody, _ := strconv.Atoi(params.Get("read_body"))
 	proxy := params.Get("proxy")
@@ -82,55 +97,67 @@ func handleHttpGet(params url.Values) func(host string) error {
 		}
 	}
 
-	handler1 := func(host string) error {
-		rawURL := "https://" + host
-
-		// 1. Check direct request
-		status1, err1 := httpRequest(rawURL, timeout, readBody, "")
-
-		if proxy != "" {
+	if proxy == "" {
+		return func(rawURL string) (int, []byte, error) {
+			status1, body1, err1 := httpRequest(rawURL, timeout, readBody, "")
 			if err1 != nil {
-				_, err2 := httpRequest(rawURL, timeout, readBody, proxy)
-				if err2 != nil {
-					// if both direct and proxy has errors - don't use proxy
-					return nil
-				}
-				return err1
+				return StatusMaybeError, body1, unwrapError(err1)
 			}
 
 			if status[status1] {
-				status2, err2 := httpRequest(rawURL, timeout, readBody, proxy)
-				if err2 != nil || status1 == status2 {
-					// if both direct and proxy has problem status - don't use proxy
-					return nil
-				}
-				return fmt.Errorf("http_get: wrong status %d", status1)
+				return StatusMaybeError, body1, fmt.Errorf("http_get: wrong status %d", status1)
 			}
+
+			if readBody > 0 && len(body1) < readBody {
+				return StatusMaybeOK, body1, nil
+			}
+
+			return StatusOK, body1, nil
 		}
+	}
+
+	return func(rawURL string) (int, []byte, error) {
+		status1, body1, err1 := httpRequest(rawURL, timeout, readBody, "")
 
 		if err1 != nil {
-			return err1
+			_, body2, err2 := httpRequest(rawURL, timeout, readBody, proxy)
+			if err2 != nil {
+				// if both direct and proxy has errors - don't use proxy
+				return StatusError, body2, err2
+			}
+
+			// don't need to check proxy body size
+			return StatusProxyOK, body2, unwrapError(err1)
 		}
 
 		if status[status1] {
-			return fmt.Errorf("http_get: wrong status %d", status1)
-		}
-
-		return nil
-	}
-
-	handler2 := func(host string) error {
-		err := handler1(host)
-		if err != nil {
-			if err2 := errors.Unwrap(err); err2 != nil {
-				err = err2
+			status2, body2, err2 := httpRequest(rawURL, timeout, readBody, proxy)
+			if err2 != nil {
+				return StatusMaybeOK, body2, nil
 			}
-			// net/http: TLS handshake timeout
-			// context deadline exceeded (Client.Timeout or context cancellation while reading body)
-			log.Info().Msgf("[hosts] http_get host=%s error=%s", host, err)
+
+			if status1 == status2 {
+				// if both direct and proxy has problem status - don't use proxy
+				return StatusError, body2, nil
+			}
+
+			return StatusProxyOK, body2, fmt.Errorf("http_get: wrong status %d", status1)
 		}
-		return err
+
+		if readBody > 0 && len(body1) < readBody {
+			return StatusMaybeOK, body1, nil
+		}
+
+		return StatusOK, body1, nil
 	}
+}
+
+func unwrapError(err error) error {
+	if err2 := errors.Unwrap(err); err2 != nil {
+		return err2
+	}
+	return err
+}
 
 	return func(host string) error {
 		return httpGetCache(host, handler2)
