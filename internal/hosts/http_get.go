@@ -167,6 +167,11 @@ func httpRequest(rawURL string, timeout, readBody int, proxy string) (int, []byt
 			TLSHandshakeTimeout: 1 * time.Second,
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Allow only redirect to same host:
+			// https://wiki.qidi3d.com -> https://wiki.qidi3d.com/en/home
+			if req.URL.Host == via[0].URL.Host {
+				return nil
+			}
 			return http.ErrUseLastResponse
 		},
 		Timeout: time.Duration(timeout) * time.Second,
