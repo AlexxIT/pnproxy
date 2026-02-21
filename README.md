@@ -425,7 +425,7 @@ proxy:
 
 # Tips and Tricks
 
-**Mikrotik DNS fail over script**
+## Mikrotik DNS fail over script
 
 - Add as System > Scheduler > Interval `00:01:00`
 
@@ -440,7 +440,37 @@ proxy:
 
 :if ([/ip dns get servers] != $server) do={
   /ip dns set servers=$server
+  /ip dns cache flush
 }
+```
+
+## Docker custom IP-address
+
+In case ports 53, 80, 443 are occupied on your server, you can run pnproxy on an custom local IP address using docker.
+
+**compose.yml**
+
+```yaml
+services:
+  pnproxy:
+    image: alexxit/pnproxy:master
+    restart: unless-stopped
+    environment:
+      - TZ=Atlantic/Bermuda
+    volumes:
+      - ~/pnproxy.yaml:/config/pnproxy.yaml
+    networks:
+      vlan: {ipv4_address: 192.168.1.4}
+
+networks:
+  vlan:
+    driver: macvlan
+    driver_opts:
+      parent: eno1                # change to your adapter name `ip a`
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24  # change to your network
+          gateway: 192.168.1.1    # change to your network
 ```
 
 # Known bugs
