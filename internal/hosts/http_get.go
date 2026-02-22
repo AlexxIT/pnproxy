@@ -141,10 +141,13 @@ func (h *hostItem) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
+// maxDomainLinks Just for saving app memory
+const maxDomainLinks = 4
+const maxDomainLinkLen = 128
+
 func (h *hostItem) updateLinks(links []string) {
 	for _, link := range links {
-		// Just for saving memory
-		if len(h.links) >= 5 {
+		if len(h.links) >= maxDomainLinks {
 			break
 		}
 		if !slices.Contains(h.links, link) {
@@ -203,41 +206,36 @@ func httpRequest(rawURL string, timeout, readBody int, proxy string) (int, []byt
 	return res.StatusCode, buf[:n], err
 }
 
-var reTag = regexp.MustCompile(`<(link|script).+?>`)
-var reRef = regexp.MustCompile(`href="([^"]+)`)
-var reSrc = regexp.MustCompile(`src="([^"]+)`)
+var reLink = regexp.MustCompile(`(href|src|content)="(https:/)?/[^"]+`)
 
 func parseLinks(host string, body []byte) url.Values {
-	body, _ = bytes.CutSuffix(body, []byte("<body"))
-
 	links := url.Values{}
 
-	for _, m := range reTag.FindAllSubmatch(body, -1) {
-		switch string(m[1]) {
-		case "link":
-			if !bytes.Contains(m[0], []byte(`rel="stylesheet"`)) {
-				continue
-			}
-			m = reRef.FindSubmatch(m[0])
-		case "script":
-			m = reSrc.FindSubmatch(m[0])
-		}
+	for _, m := range reLink.FindAll(body, -1) {
+		i := bytes.IndexByte(m, '"')
+		link := string(m[i+1:])
 
-		if m == nil {
+		// Skip big links (save app memory)
+		if len(link) > maxDomainLinkLen {
 			continue
 		}
-
-		link := string(m[1])
 
 		u2, err := url.Parse(link)
 		if err != nil {
 			continue
 		}
 
+		// Skip index pages
+		if len(u2.Path) <= 1 {
+			continue
+		}
+
 		if u2.Host == "" {
-			u := url.URL{Scheme: "https", Host: host}
-			links.Add(host, u.ResolveReference(u2).String())
-		} else {
+			if len(links[host]) < maxDomainLinks {
+				u := url.URL{Scheme: "https", Host: host}
+				links.Add(host, u.ResolveReference(u2).String())
+			}
+		} else if len(links[u2.Host]) < maxDomainLinks {
 			links.Add(u2.Host, link)
 		}
 	}
