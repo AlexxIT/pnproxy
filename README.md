@@ -109,25 +109,25 @@ hosts:
   http_error: http_get timeout 3
 ```
 
-Sometimes it is important to read a few bytes (64000 in the example):
+Sometimes it is important to read a few bytes (32000 in the example):
 
 ```yaml
 hosts:
-  http_error: http_get timeout 3 read_body 64000
+  http_error: http_get timeout 3 read_body 32000
 ```
 
-Sometimes it is important to look at the HTTP response status (403 in the example):
+Sometimes it is important to look at the HTTP response status (403 and 451 in the example):
 
 ```yaml
 hosts:
-  http_error: http_get timeout 3 read_body 64000 status 403
+  http_error: http_get timeout 3 read_body 32000 status 403 status 451
 ```
 
 And the best thing is to check if this site works through a proxy:
 
 ```yaml
 hosts:
-  http_error: http_get timeout 3 read_body 64000 status 403 proxy http://192.168.1.3:18080
+  http_error: http_get timeout 3 read_body 32000 status 403 status 451 proxy http://192.168.1.3:18080
 ```
 
 Finally, pnproxy will check whether the site is accessible, whether several bytes of the main page can be read, and what HTTP status the server returns.
@@ -139,7 +139,7 @@ If a proxy fixes problems accessing a site, it will be marked with the `http_err
 ```yaml
 hosts:
   adblock: doubleclick.net googlesyndication.com
-  http_error: http_get timeout 3 read_body 64000 status 403 proxy http://192.168.1.3:18080  # change to proxy server
+  http_error: http_get timeout 3 read_body 32000 status 403 status 451 proxy http://192.168.1.3:18080  # change to proxy server
 
 dns:
   listen: ":53"
@@ -390,7 +390,7 @@ hosts:
   # forward some sited to proxy
   proxy: twitter.com twimg.com t.co x.com
   # auto-detect blocked sited via proxy server
-  error: http_get timeout 3 read_body 64000 status 403 proxy http://192.168.1.3:18080
+  error: http_get timeout 3 read_body 32000 status 403 status 451 proxy http://192.168.1.3:18080
 
 dns:
   listen: ":53"
