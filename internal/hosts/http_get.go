@@ -209,7 +209,15 @@ var reLink = regexp.MustCompile(`(href|src|content)="(https:/)?/[^"]+`)
 func parseLinks(host string, body []byte) url.Values {
 	links := url.Values{}
 
-	for _, m := range reLink.FindAll(body, -1) {
+	// Find all links in body
+	matches := reLink.FindAll(body, -1)
+
+	// Sort links, so more important will be first
+	slices.SortFunc(matches, func(a, b []byte) int {
+		return linkWeight(b) - linkWeight(a)
+	})
+
+	for _, m := range matches {
 		i := bytes.IndexByte(m, '"')
 		link := string(m[i+1:])
 
@@ -239,4 +247,24 @@ func parseLinks(host string, body []byte) url.Values {
 	}
 
 	return links
+}
+
+func linkWeight(path []byte) int {
+	for i := len(path) - 1; i > 0; i-- {
+		switch path[i] {
+		case '.':
+			switch string(path[i+1:]) {
+			case "css", "js":
+				return 2
+			case "jpg", "jpeg", "png":
+				return 1
+			}
+			return 0
+		case '?', '#':
+			path = path[:i]
+		case '/':
+			return 0
+		}
+	}
+	return 0
 }
