@@ -31,13 +31,11 @@ func (h *HostChecker) Check(host string) (int, error) {
 	item.mu.Lock()
 	defer item.mu.Unlock()
 
-	now := time.Now()
-
-	if now.Before(item.deadline) {
+	if now := time.Now(); now.Before(item.deadline) {
 		return 0, item.err
+	} else {
+		item.deadline = now.Add(time.Hour)
 	}
-
-	item.deadline = now.Add(time.Hour)
 
 	index := "https://" + host
 
