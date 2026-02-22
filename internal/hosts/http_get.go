@@ -179,7 +179,14 @@ func httpRequest(rawURL string, timeout, readBody int, proxy string) (int, []byt
 		Timeout: time.Duration(timeout) * time.Second,
 	}
 
-	res, err := client.Get(rawURL)
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	req.Header.Add("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0")
+
+	res, err := client.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
