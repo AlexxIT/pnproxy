@@ -249,6 +249,10 @@ func parseLinks(host string, body []byte) url.Values {
 				links.Add(host, u.ResolveReference(u2).String())
 			}
 		} else if len(links[u2.Host]) < maxDomainLinks {
+			// Check zero host `//ajax.googleapis.com/ajax/libs/webfont/1/webfont.js`
+			if u2.Scheme == "" {
+				link = "https:" + link
+			}
 			links.Add(u2.Host, link)
 		}
 	}
