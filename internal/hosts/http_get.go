@@ -61,6 +61,8 @@ func (h *HostChecker) Check(host string) (int, error) {
 			}
 		}
 
+		item.status = status
+
 		switch status {
 		case StatusOK, StatusError, StatusMaybeOK:
 			item.err = nil
@@ -139,12 +141,25 @@ type hostItem struct {
 	mu       sync.Mutex
 	deadline time.Time
 	links    []string
+	status   int
 	err      error
 }
 
 func (h *hostItem) MarshalJSON() ([]byte, error) {
 	m := map[string]any{
 		"links": h.links,
+	}
+	switch h.status {
+	case StatusOK:
+		m["status"] = "ok"
+	case StatusMaybeOK:
+		m["status"] = "ok?"
+	case StatusProxyOK:
+		m["status"] = "proxy"
+	case StatusMaybeError:
+		m["status"] = "error?"
+	case StatusError:
+		m["status"] = "error"
 	}
 	if h.err != nil {
 		m["error"] = h.err.Error()
