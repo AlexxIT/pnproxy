@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	app.Version = "alpha"
+	app.Version = "1.0.0"
 
 	app.Init()   // before all
 	hosts.Init() // before others

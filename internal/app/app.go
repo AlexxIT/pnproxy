@@ -3,7 +3,10 @@ package app
 import (
 	"flag"
 	"net/url"
+	"runtime/debug"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -19,9 +22,12 @@ func Init() {
 
 	initConfig(configPath)
 	initLog()
+	initVersion()
 
 	Info["version"] = Version
 	Info["config_path"] = configPath
+
+	log.Info().Str("version", Version).Msg("pnproxy")
 }
 
 func ParseAction(raw string) (fields []string, params url.Values) {
@@ -33,4 +39,29 @@ func ParseAction(raw string) (fields []string, params url.Values) {
 		params[k] = append(params[k], v)
 	}
 	return
+}
+
+func initVersion() {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		var revision string
+
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				if len(setting.Value) > 7 {
+					revision = setting.Value[:7]
+				} else {
+					revision = setting.Value
+				}
+			case "vcs.modified":
+				if setting.Value == "true" {
+					revision += ".dirty"
+				}
+			}
+		}
+
+		if info.Main.Version != "v"+Version {
+			Version += "+dev." + revision
+		}
+	}
 }
