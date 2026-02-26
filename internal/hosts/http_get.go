@@ -27,7 +27,7 @@ func (h *HostChecker) MarshalJSON() ([]byte, error) {
 }
 
 func (h *HostChecker) Check(host string) (int, error) {
-	item := h.getCache(host)
+	item := h.getItem(host)
 	item.mu.Lock()
 	defer item.mu.Unlock()
 
@@ -84,7 +84,7 @@ func (h *HostChecker) Check(host string) (int, error) {
 	return StatusMaybeOK, item.err
 }
 
-func (h *HostChecker) getCache(host string) *hostItem {
+func (h *HostChecker) getItem(host string) *hostItem {
 	h.cacheMu.Lock()
 	defer h.cacheMu.Unlock()
 
@@ -116,11 +116,24 @@ func (h *HostChecker) getCache(host string) *hostItem {
 }
 
 func (h *HostChecker) updateLinks(host string, links []string) {
-	item := h.getCache(host)
+	item := h.getItem(host)
 	item.mu.Lock()
 	item.updateLinks(links)
 	item.mu.Unlock()
 }
+
+const (
+	// StatusOK Means that direct access to the resource definitely exists.
+	StatusOK = iota + 1
+	// StatusMaybeOK Means that direct access is available, but we are not sure about it.
+	StatusMaybeOK
+	// StatusProxyOK Means that access via a proxy works better than direct access.
+	StatusProxyOK
+	// StatusMaybeError Means that there are problems with direct access, and we are not sure if a proxy will help.
+	StatusMaybeError
+	// StatusError Means that there is definitely an issue with direct access and access via proxy.
+	StatusError
+)
 
 type hostItem struct {
 	mu       sync.Mutex

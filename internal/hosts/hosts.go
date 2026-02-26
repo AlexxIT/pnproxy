@@ -73,19 +73,6 @@ var static = map[string]string{}
 var httpRule string
 var httpGet *HostChecker
 
-const (
-	// StatusOK Means that direct access to the resource definitely exists.
-	StatusOK = iota + 1
-	// StatusMaybeOK Means that direct access is available, but we are not sure about it.
-	StatusMaybeOK
-	// StatusProxyOK Means that access via a proxy works better than direct access.
-	StatusProxyOK
-	// StatusMaybeError Means that there are problems with direct access, and we are not sure if a proxy will help.
-	StatusMaybeError
-	// StatusError Means that there is definitely an issue with direct access and access via proxy.
-	StatusError
-)
-
 func handleHttpGet(params url.Values) func(host string) (int, []byte, error) {
 	timeout, _ := strconv.Atoi(params.Get("timeout"))
 	readBody, _ := strconv.Atoi(params.Get("read_body"))
