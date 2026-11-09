@@ -57,7 +57,7 @@ In the examples below, you installed pnproxy on your home server `192.168.1.2`. 
      listen: ":443"
      rules:
        - name: tunnel                          # name from hosts block
-         action: proxy_pass host 192.168.1.3 port 18080  # forward this sites to external HTTP proxy
+         action: proxy_pass proxy http://192.168.1.3:18080  # forward this sites to external HTTP proxy
      default:
        action: raw_pass
    
@@ -161,7 +161,7 @@ tls:
   listen: ":443"
   rules:
     - name: http_error
-      action: proxy_pass host 192.168.1.3 port 18080  # change to proxy server
+      action: proxy_pass proxy http://192.168.1.3:18080  # change to proxy server
 ```
 
 # Module: DNS
@@ -294,10 +294,7 @@ Rules action supports setting `proxy_pass`:
 http:
   rules:
     - name: list1 list2
-      # host and port - mandatory
-      # username and password - optional
-      # type - socks5 (default - http)
-      action: proxy_pass host 123.123.123.123 port 3128 username user1 password pasw1 type socks5
+      action: proxy_pass proxy socks5://user1:pasw1@123.123.123.123:3128
 ```
 
 ## http default action
@@ -348,10 +345,7 @@ Rules action supports setting `proxy_pass`:
 tls:
   rules:
     - name: list1 list2
-      # host and port - mandatory
-      # username and password - optional
-      # type - socks5 (default - http)
-      action: proxy_pass host 123.123.123.123 port 3128 username user1 password pasw1
+      action: proxy_pass proxy http://user1:pasw1@123.123.123.123:3128
 ```
 
 ## tls default action
@@ -416,7 +410,7 @@ tls:
   rules:
     # forward this sites to proxy server
     - name: proxy error
-      action: proxy_pass host 192.168.1.3 port 18080
+      action: proxy_pass proxy http://192.168.1.3:18080
 
 proxy:
   # use pnproxy as proxy server for testing purposes

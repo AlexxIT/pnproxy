@@ -157,6 +157,10 @@ func handleRaw(params url.Values) http.HandlerFunc {
 }
 
 func handleProxy(params url.Values) http.HandlerFunc {
+	if params.Has("proxy") {
+		app.ParseProxyParam(params)
+	}
+
 	if !params.Has("host") {
 		return nil
 	}

@@ -166,6 +166,10 @@ func handleRaw(params url.Values) handlerFunc {
 }
 
 func handleProxy(params url.Values) handlerFunc {
+	if params.Has("proxy") {
+		app.ParseProxyParam(params)
+	}
+
 	if !params.Has("host") || !params.Has("port") {
 		return nil
 	}
