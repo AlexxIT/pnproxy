@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:labs
 
-ARG GO_VERSION="1.25"
+ARG GO_VERSION="1.27"
 
 
 # 1. Build binary
