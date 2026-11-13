@@ -335,6 +335,17 @@ tls:
       action: raw_pass host 123.123.123.123 port 10443
 ```
 
+## tls action: bye_pass
+
+Forwards traffic using default [byedpi](https://github.com/hufrea/byedpi) logic for Linux. Supported only for Linux.
+
+```yaml
+tls:
+  rules:
+    - name: list1 list2
+      action: bye_pass
+```
+
 ## tls action: proxy_pass
 
 Rules action supports setting `proxy_pass`:

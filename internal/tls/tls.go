@@ -6,12 +6,14 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
 	"github.com/AlexxIT/pnproxy/internal/hosts"
+	"github.com/AlexxIT/pnproxy/pkg/byedpi"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/proxy"
 )
@@ -137,6 +139,8 @@ func parseAction(raw any) handlerFunc {
 			switch fields[0] {
 			case "raw_pass":
 				return handleRaw(params)
+			case "bye_pass":
+				return handleByePass(params)
 			case "proxy_pass":
 				return handleProxy(params)
 			}
@@ -188,6 +192,17 @@ func parseTimeout(s string, def time.Duration) time.Duration {
 }
 
 func handleRaw(params url.Values) handlerFunc {
+	return handleRawPass(params, false)
+}
+
+func handleByePass(params url.Values) handlerFunc {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	return handleRawPass(params, true)
+}
+
+func handleRawPass(params url.Values, useByeDPI bool) handlerFunc {
 	forceHost := params.Get("host")
 	port := params.Get("port")
 	if port == "" {
@@ -207,6 +222,9 @@ func handleRaw(params url.Values) handlerFunc {
 		dst, err := dialer.Dial("tcp", host+":"+port)
 		if err != nil {
 			return err
+		}
+		if useByeDPI {
+			dst = byedpi.NewDesyncConn(dst.(*net.TCPConn))
 		}
 		//noinspection GoUnhandledErrorResult
 		defer dst.Close()
