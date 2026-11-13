@@ -369,6 +369,22 @@ tls:
     action: raw_pass
 ```
 
+## tls action timeouts
+
+The `raw_pass`, `bye_pass`, and `proxy_pass` actions support these timeout parameters:
+
+- `connect_timeout` limits connecting to the destination. With `proxy_pass`, it also limits connection through the proxy. The default is `5s`.
+- `response_timeout` limits waiting for the first response from the destination after forwarding the ClientHello. The default is `0`.
+
+Values use Go duration syntax, such as `250ms`, `3s`, or `1m`. Use `0` to disable the  timeout.
+
+```yaml
+tls:
+  rules:
+    - name: example.org
+      action: raw_pass connect_timeout 3s response_timeout 2s
+```
+
 # Module: Proxy
 
 Run HTTP proxy server. This module does not have its own rules. It uses the HTTP and TLS module rules.
