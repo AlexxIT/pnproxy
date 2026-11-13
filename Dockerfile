@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:labs
-
 ARG GO_VERSION="1.27"
 
 
@@ -27,12 +25,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -ldfl
 # 2. Final image
 FROM alpine
 
-# Install tini (for signal handling)
-RUN apk add --no-cache tini
-
 COPY --from=build /build/pnproxy /usr/local/bin/
 
-ENTRYPOINT ["/sbin/tini", "--"]
 VOLUME /config
 WORKDIR /config
 
