@@ -57,8 +57,7 @@ func WriteFakeMD5(c *net.TCPConn, p []byte) (sent int, err error) {
 		return 0, e
 	}
 	defer func() { err = errors.Join(err, unix.Munmap(mem)) }()
-	fake := selectFake(p)
-	copy(mem[:split], fake) // mmap zero padding matches get_tcp_fake().
+	copy(mem[:split], selectFake(p)) // Anonymous mmap padding matches get_tcp_fake().
 	var sig unix.TCPMD5Sig
 	var level, opt, ttl int
 	enabled, ttlChanged := false, false
@@ -171,28 +170,25 @@ func giftPage(p []byte, want int, drain func(int, int) (int, error)) error {
 	if e := unix.Pipe2(fds, unix.O_CLOEXEC|unix.O_NONBLOCK); e != nil {
 		return e
 	}
-	//noinspection GoUnhandledErrorResult
-	defer unix.Close(fds[0])
-	//noinspection GoUnhandledErrorResult
-	defer unix.Close(fds[1])
+	defer func() {
+		_ = unix.Close(fds[1])
+		_ = unix.Close(fds[0])
+	}()
 	iov := []unix.Iovec{{Base: &p[0]}}
 	iov[0].SetLen(len(p))
-	var n int
-	var e error
 	for {
-		n, e = unix.Vmsplice(fds[1], iov, unix.SPLICE_F_GIFT|unix.SPLICE_F_NONBLOCK)
-		if //noinspection GoDirectComparisonOfErrors
-		e != unix.EINTR {
-			break
+		n, err := unix.Vmsplice(fds[1], iov, unix.SPLICE_F_GIFT|unix.SPLICE_F_NONBLOCK)
+		if errors.Is(err, unix.EINTR) {
+			continue
 		}
+		if err != nil {
+			return err
+		}
+		if n < len(p) {
+			return fmt.Errorf("vmsplice: short page gift %d < %d", n, len(p))
+		}
+		return drainAll(want, func(left int) (int, error) { return drain(fds[0], left) })
 	}
-	if e != nil {
-		return e
-	}
-	if n < len(p) {
-		return fmt.Errorf("vmsplice: short page gift %d < %d", n, len(p))
-	}
-	return drainAll(want, func(left int) (int, error) { return drain(fds[0], left) })
 }
 
 func drainAll(want int, fn func(int) (int, error)) error {
@@ -219,7 +215,7 @@ func queueEmpty(fd int) error {
 	if errno != 0 {
 		return errno
 	}
-	if uintptr(size) < unsafe.Offsetof(info.Notsent_bytes)+4 {
+	if uintptr(size) < unsafe.Offsetof(info.Notsent_bytes)+unsafe.Sizeof(info.Notsent_bytes) {
 		return fmt.Errorf("%w: TCP_INFO lacks notsent_bytes", ErrUnsupported)
 	}
 	if info.State != 1 { // TCP_ESTABLISHED (Linux UAPI)
@@ -231,15 +227,14 @@ func queueEmpty(fd int) error {
 	return nil
 }
 
-func selectFake(p []byte) []byte {
-	for _, method := range []string{"GET ", "POST ", "HEAD ", "PUT ", "DELETE ", "OPTIONS ", "CONNECT ", "TRACE ", "PATCH "} {
-		if bytes.HasPrefix(p, []byte(method)) {
-			return []byte("GET / HTTP/1.1\r\nHost: www.wikipedia.org\r\n\r\n")
+func selectFake(p []byte) string {
+	if i := bytes.IndexByte(p, ' '); i >= 3 && i <= 7 {
+		switch string(p[:i]) {
+		case "GET", "POST", "HEAD", "PUT", "DELETE", "OPTIONS", "CONNECT", "TRACE", "PATCH":
+			return "GET / HTTP/1.1\r\nHost: www.wikipedia.org\r\n\r\n"
 		}
 	}
-	b := make([]byte, 517)
-	copy(b, tlsPrefix)
-	return b
+	return tlsPrefix
 }
 
 // tlsPrefix contains the bytes from the string literal used to initialize
