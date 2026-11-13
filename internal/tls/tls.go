@@ -1,10 +1,12 @@
 package tls
 
 import (
+	"context"
 	"encoding/base64"
 	"io"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,10 +22,10 @@ func Init() {
 			Listen string `yaml:"listen"`
 			Rules  []struct {
 				Name   string `yaml:"name"`
-				Action string `yaml:"action"`
+				Action any    `yaml:"action"`
 			}
 			Default struct {
-				Action string `yaml:"action"`
+				Action any `yaml:"action"`
 			} `yaml:"default"`
 		} `yaml:"tls"`
 	}
@@ -52,6 +54,7 @@ func Init() {
 }
 
 func Handle(src net.Conn) {
+	//noinspection GoUnhandledErrorResult
 	defer src.Close()
 
 	remote := src.RemoteAddr().String()
@@ -80,12 +83,16 @@ func Handle(src net.Conn) {
 
 	log.Debug().Msgf("[tls] open remote_addr=%s domain=%s rule=%s", remote, domain, rule)
 
-	handler(src, domain, hello)
+	err = handler(src, domain, hello)
 
-	log.Trace().Msgf("[tls] close remote_addr=%s", remote)
+	if err != nil {
+		log.Warn().Err(err).Msgf("[tls] close remote_addr=%s", remote)
+	} else {
+		log.Trace().Msgf("[tls] close remote_addr=%s", remote)
+	}
 }
 
-type handlerFunc func(src net.Conn, host string, hello []byte)
+type handlerFunc func(src net.Conn, host string, hello []byte) error
 
 var handlers = map[string]handlerFunc{}
 var defaultHandler handlerFunc
@@ -122,17 +129,62 @@ func serve(address string) {
 	}
 }
 
-func parseAction(raw string) handlerFunc {
-	if raw != "" {
-		fields, params := app.ParseAction(raw)
-		switch fields[0] {
-		case "raw_pass":
-			return handleRaw(params)
-		case "proxy_pass":
-			return handleProxy(params)
+func parseAction(raw any) handlerFunc {
+	switch raw := raw.(type) {
+	case string:
+		if raw != "" {
+			fields, params := app.ParseAction(raw)
+			switch fields[0] {
+			case "raw_pass":
+				return handleRaw(params)
+			case "proxy_pass":
+				return handleProxy(params)
+			}
 		}
+	case []any:
+		return handleMulti(raw)
 	}
 	return nil
+}
+
+func handleMulti(actions []any) handlerFunc {
+	var handlers []handlerFunc
+
+	for _, action := range actions {
+		handler := parseAction(action)
+		if handler == nil {
+			log.Warn().Msgf("[tls] wrong action: %s", action)
+			continue
+		}
+		handlers = append(handlers, handler)
+	}
+
+	if len(handlers) == 0 {
+		return nil
+	}
+
+	return func(conn net.Conn, host string, hello []byte) (err error) {
+		for _, handler := range handlers {
+			err = handler(conn, host, hello)
+			if err == nil {
+				return
+			}
+			log.Debug().Err(err).Msg("[tls] can't handle")
+		}
+		return
+	}
+}
+
+func parseTimeout(s string, def time.Duration) time.Duration {
+	if s != "" {
+		if d, err := time.ParseDuration(s); err == nil && d >= 0 {
+			return d
+		}
+		if i, err := strconv.Atoi(s); err == nil && i > 0 {
+			return time.Duration(i) * time.Second
+		}
+	}
+	return def
 }
 
 func handleRaw(params url.Values) handlerFunc {
@@ -142,26 +194,30 @@ func handleRaw(params url.Values) handlerFunc {
 		port = "443"
 	}
 
-	dialer := net.Dialer{Timeout: 5 * time.Second}
+	connectTimeout := parseTimeout(params.Get("connect_timeout"), 5*time.Second)
+	responseTimeout := parseTimeout(params.Get("response_timeout"), 0)
 
-	return func(src net.Conn, host string, hello []byte) {
+	dialer := net.Dialer{Timeout: connectTimeout}
+
+	return func(src net.Conn, host string, hello []byte) error {
 		if forceHost != "" {
 			host = forceHost
 		}
 
 		dst, err := dialer.Dial("tcp", host+":"+port)
 		if err != nil {
-			log.Warn().Err(err).Caller().Send()
-			return
+			return err
 		}
+		//noinspection GoUnhandledErrorResult
 		defer dst.Close()
 
-		if _, err = dst.Write(hello); err != nil {
-			log.Warn().Err(err).Caller().Send()
-			return
+		if err = exchangeHello(dst, src, hello, responseTimeout); err != nil {
+			return err
 		}
 
+		hello = nil
 		ioCopy(dst, src)
+		return nil
 	}
 }
 
@@ -193,31 +249,49 @@ func handleProxyHTTP(params url.Values) handlerFunc {
 		connect += "\r\n"
 	}
 
-	dialer := net.Dialer{Timeout: 5 * time.Second}
+	connectTimeout := parseTimeout(params.Get("connect_timeout"), 5*time.Second)
+	responseTimeout := parseTimeout(params.Get("response_timeout"), 0)
+	proxyConnectTimeout := parseTimeout(params.Get("proxy_connect_timeout"), 5*time.Second)
 
-	return func(src net.Conn, host string, hello []byte) {
+	dialer := net.Dialer{Timeout: proxyConnectTimeout}
+
+	return func(src net.Conn, host string, hello []byte) error {
+		log.Trace().Msgf("[tls] proxy http before dial")
+
 		dst, err := dialer.Dial("tcp", address)
 		if err != nil {
-			return
+			return err
 		}
+		//noinspection GoUnhandledErrorResult
 		defer dst.Close()
 
+		log.Trace().Msgf("[tls] proxy http before connect")
+
+		if connectTimeout > 0 {
+			_ = dst.SetDeadline(time.Now().Add(connectTimeout))
+		}
+
 		if _, err = dst.Write([]byte("CONNECT " + host + connect)); err != nil {
-			log.Warn().Err(err).Caller().Send()
-			return
+			return err
 		}
 
-		b := make([]byte, 1024*4)
+		b := make([]byte, 4096)
 		if _, err = dst.Read(b); err != nil {
-			return
+			return err
 		}
 
-		if _, err = dst.Write(hello); err != nil {
-			log.Warn().Err(err).Caller().Send()
-			return
+		b = nil
+		_ = dst.SetDeadline(time.Time{})
+
+		log.Trace().Msgf("[tls] proxy http before exchange")
+
+		if err = exchangeHello(dst, src, hello, responseTimeout); err != nil {
+			return err
 		}
 
+		hello = nil
 		ioCopy(dst, src)
+		return nil
 	}
 }
 
@@ -232,25 +306,72 @@ func handleProxySOCKS5(params url.Values) handlerFunc {
 		}
 	}
 
-	dialer, err := proxy.SOCKS5("tcp", address, auth, nil)
+	connectTimeout := parseTimeout(params.Get("connect_timeout"), 5*time.Second)
+	responseTimeout := parseTimeout(params.Get("response_timeout"), 0)
+	proxyConnectTimeout := parseTimeout(params.Get("proxy_connect_timeout"), 5*time.Second)
+
+	var forward proxy.Dialer
+	if proxyConnectTimeout > 0 {
+		forward = &net.Dialer{Timeout: proxyConnectTimeout}
+	}
+
+	dialer, err := proxy.SOCKS5("tcp", address, auth, forward)
 	if err != nil {
 		return nil
 	}
 
-	return func(src net.Conn, host string, hello []byte) {
-		dst, err := dialer.Dial("tcp", host+":443")
+	return func(src net.Conn, host string, hello []byte) error {
+		dst, err := proxyDialWithTimeout(dialer, "tcp", host+":443", connectTimeout)
 		if err != nil {
-			return
+			return err
 		}
+		//noinspection GoUnhandledErrorResult
 		defer dst.Close()
 
-		if _, err = dst.Write(hello); err != nil {
-			log.Warn().Err(err).Caller().Send()
-			return
+		if err = exchangeHello(dst, src, hello, responseTimeout); err != nil {
+			return err
 		}
 
+		hello = nil
 		ioCopy(dst, src)
+		return nil
 	}
+}
+
+func proxyDialWithTimeout(dialer proxy.Dialer, network, address string, timeout time.Duration) (net.Conn, error) {
+	if timeout <= 0 {
+		return dialer.Dial(network, address)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return dialer.(proxy.ContextDialer).DialContext(ctx, network, address)
+}
+
+func exchangeHello(dst, src net.Conn, clientHello []byte, timeout time.Duration) error {
+	if timeout <= 0 {
+		_, err := dst.Write(clientHello)
+		return err
+	}
+
+	_ = dst.SetDeadline(time.Now().Add(timeout))
+
+	if _, err := dst.Write(clientHello); err != nil {
+		return err
+	}
+
+	serverHello := make([]byte, 4096)
+	n, err := dst.Read(serverHello)
+	if err != nil {
+		return err
+	}
+
+	if _, err = src.Write(serverHello[:n]); err != nil {
+		return err
+	}
+
+	_ = dst.SetDeadline(time.Time{})
+	return nil
 }
 
 func ioCopy(dst, src net.Conn) {
