@@ -140,9 +140,7 @@ func WriteFakeMD5(c *net.TCPConn, p []byte) (sent int, err error) {
 		e = giftPage(mem[off:off+page], want, func(fd int, left int) (int, error) {
 			moved := 0
 			x := retry(func(sock int) error {
-				var se error
-				var n int64
-				n, se = unix.Splice(fd, nil, sock, nil, left, unix.SPLICE_F_NONBLOCK)
+				n, se := unix.Splice(fd, nil, sock, nil, left, unix.SPLICE_F_NONBLOCK)
 				moved = int(n)
 				return se
 			})
