@@ -385,6 +385,21 @@ tls:
       action: raw_pass connect_timeout 3s response_timeout 2s
 ```
 
+## tls action list
+
+The `action` value can have multiple actions. The next action is used if the previous one returns an error.
+
+```yaml
+tls:
+  rules:
+    - name: example.org
+      action:
+        - bye_pass connect_timeout 1s response_timeout 1s
+        - bye_pass connect_timeout 1s response_timeout 1s
+        - bye_pass connect_timeout 1s response_timeout 1s
+        - proxy_pass proxy http://192.168.1.123:1080
+```
+
 # Module: Proxy
 
 Run HTTP proxy server. This module does not have its own rules. It uses the HTTP and TLS module rules.
