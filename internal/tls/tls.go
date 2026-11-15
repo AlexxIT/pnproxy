@@ -270,16 +270,12 @@ func handleProxyHTTP(params url.Values) handlerFunc {
 	dialer := net.Dialer{Timeout: proxyConnectTimeout}
 
 	return func(src net.Conn, host string, hello []byte) error {
-		log.Trace().Msgf("[tls] proxy http before dial")
-
 		dst, err := dialer.Dial("tcp", address)
 		if err != nil {
 			return err
 		}
 		//noinspection GoUnhandledErrorResult
 		defer dst.Close()
-
-		log.Trace().Msgf("[tls] proxy http before connect")
 
 		if connectTimeout > 0 {
 			_ = dst.SetDeadline(time.Now().Add(connectTimeout))
@@ -296,8 +292,6 @@ func handleProxyHTTP(params url.Values) handlerFunc {
 
 		b = nil
 		_ = dst.SetDeadline(time.Time{})
-
-		log.Trace().Msgf("[tls] proxy http before exchange")
 
 		if err = exchangeHello(dst, src, hello, responseTimeout); err != nil {
 			return err
