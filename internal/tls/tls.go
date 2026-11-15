@@ -6,12 +6,12 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
 	"github.com/AlexxIT/pnproxy/internal/hosts"
+	"github.com/AlexxIT/pnproxy/pkg"
 	"github.com/AlexxIT/pnproxy/pkg/byedpi"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/proxy"
@@ -178,18 +178,6 @@ func handleMulti(actions []any) handlerFunc {
 	}
 }
 
-func parseTimeout(s string, def time.Duration) time.Duration {
-	if s != "" {
-		if d, err := time.ParseDuration(s); err == nil && d >= 0 {
-			return d
-		}
-		if i, err := strconv.Atoi(s); err == nil && i > 0 {
-			return time.Duration(i) * time.Second
-		}
-	}
-	return def
-}
-
 func handleRaw(params url.Values) handlerFunc {
 	return handleRawPass(params, false)
 }
@@ -205,8 +193,8 @@ func handleRawPass(params url.Values, useByeDPI bool) handlerFunc {
 		port = "443"
 	}
 
-	connectTimeout := parseTimeout(params.Get("connect_timeout"), 5*time.Second)
-	responseTimeout := parseTimeout(params.Get("response_timeout"), 0)
+	connectTimeout := pkg.ParseTimeout(params.Get("connect_timeout"), 5*time.Second)
+	responseTimeout := pkg.ParseTimeout(params.Get("response_timeout"), 0)
 
 	dialer := net.Dialer{Timeout: connectTimeout}
 
@@ -263,9 +251,9 @@ func handleProxyHTTP(params url.Values) handlerFunc {
 		connect += "\r\n"
 	}
 
-	connectTimeout := parseTimeout(params.Get("connect_timeout"), 5*time.Second)
-	responseTimeout := parseTimeout(params.Get("response_timeout"), 0)
-	proxyConnectTimeout := parseTimeout(params.Get("proxy_connect_timeout"), 5*time.Second)
+	connectTimeout := pkg.ParseTimeout(params.Get("connect_timeout"), 5*time.Second)
+	responseTimeout := pkg.ParseTimeout(params.Get("response_timeout"), 0)
+	proxyConnectTimeout := pkg.ParseTimeout(params.Get("proxy_connect_timeout"), 5*time.Second)
 
 	dialer := net.Dialer{Timeout: proxyConnectTimeout}
 
@@ -314,9 +302,9 @@ func handleProxySOCKS5(params url.Values) handlerFunc {
 		}
 	}
 
-	connectTimeout := parseTimeout(params.Get("connect_timeout"), 5*time.Second)
-	responseTimeout := parseTimeout(params.Get("response_timeout"), 0)
-	proxyConnectTimeout := parseTimeout(params.Get("proxy_connect_timeout"), 5*time.Second)
+	connectTimeout := pkg.ParseTimeout(params.Get("connect_timeout"), 5*time.Second)
+	responseTimeout := pkg.ParseTimeout(params.Get("response_timeout"), 0)
+	proxyConnectTimeout := pkg.ParseTimeout(params.Get("proxy_connect_timeout"), 5*time.Second)
 
 	var forward proxy.Dialer
 	if proxyConnectTimeout > 0 {

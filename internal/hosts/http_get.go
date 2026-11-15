@@ -1,15 +1,17 @@
 package hosts
 
 import (
-	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
-	"regexp"
-	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,7 +19,7 @@ type HostChecker struct {
 	// cache key is domain
 	cache   map[string]*hostItem
 	cacheMu sync.Mutex
-	Handler func(rawURL string) (status int, body []byte, err error)
+	Handler func(host string) int
 }
 
 func (h *HostChecker) MarshalJSON() ([]byte, error) {
@@ -26,64 +28,20 @@ func (h *HostChecker) MarshalJSON() ([]byte, error) {
 	return json.Marshal(h.cache)
 }
 
-func (h *HostChecker) Check(host string) (int, error) {
+func (h *HostChecker) CheckHost(host string) int {
 	item := h.getItem(host)
 	item.mu.Lock()
 	defer item.mu.Unlock()
 
-	if now := time.Now(); now.Before(item.deadline) {
-		return 0, item.err
-	} else {
-		item.deadline = now.Add(time.Hour)
+	now := time.Now()
+	if now.Before(item.deadline) {
+		return item.status
 	}
 
-	index := "https://" + host
+	item.deadline = now.Add(time.Hour)
+	item.status = h.Handler(host)
 
-	if !slices.Contains(item.links, index) {
-		item.links = append(item.links, index)
-	} else {
-		index = ""
-	}
-
-	// Check links to pages of this domain if we know them
-	for i := 0; i < len(item.links); i++ {
-		link := item.links[i]
-		status, body, err := h.Handler(link)
-
-		if link == index {
-			// Save all CSS and JS links from main page head
-			for host2, links2 := range parseLinks(host, body) {
-				if host == host2 {
-					item.updateLinks(links2)
-				} else {
-					go h.updateLinks(host2, links2)
-				}
-			}
-		}
-
-		item.status = status
-
-		switch status {
-		case StatusOK, StatusError, StatusMaybeOK:
-			item.err = nil
-		case StatusProxyOK, StatusMaybeError:
-			item.err = err
-		}
-
-		if status == StatusMaybeOK {
-			continue
-		}
-
-		if i > 0 {
-			// move known problem link to the first place
-			item.links[i] = item.links[0]
-			item.links[0] = link
-		}
-
-		return status, item.err
-	}
-
-	return StatusMaybeOK, item.err
+	return item.status
 }
 
 func (h *HostChecker) getItem(host string) *hostItem {
@@ -117,193 +75,160 @@ func (h *HostChecker) getItem(host string) *hostItem {
 	return item
 }
 
-func (h *HostChecker) updateLinks(host string, links []string) {
-	item := h.getItem(host)
-	item.mu.Lock()
-	item.updateLinks(links)
-	item.mu.Unlock()
-}
-
 const (
-	// StatusOK Means that direct access to the resource definitely exists.
-	StatusOK = iota + 1
-	// StatusMaybeOK Means that direct access is available, but we are not sure about it.
-	StatusMaybeOK
-	// StatusProxyOK Means that access via a proxy works better than direct access.
-	StatusProxyOK
-	// StatusMaybeError Means that there are problems with direct access, and we are not sure if a proxy will help.
-	StatusMaybeError
-	// StatusError Means that there is definitely an issue with direct access and access via proxy.
-	StatusError
+	DirectOK = iota + 1
+	DirectThrottled
+	DirectUnknown
+	DirectSNIBlocked
+	ProxyOK
+	ProxyStatusOK
+	ProxyError
+	DirectError
 )
+
+func statusName(status int) string {
+	switch status {
+	case DirectOK:
+		return "direct_ok"
+	case DirectThrottled:
+		return "direct_throttled"
+	case DirectUnknown:
+		return "direct_unknown"
+	case DirectSNIBlocked:
+		return "direct_sni_blocked"
+	case ProxyOK:
+		return "proxy_ok"
+	case ProxyStatusOK:
+		return "proxy_status_ok"
+	case ProxyError:
+		return "proxy_error"
+	case DirectError:
+		return "direct_error"
+	}
+	return ""
+}
 
 type hostItem struct {
 	mu       sync.Mutex
 	deadline time.Time
-	links    []string
 	status   int
-	err      error
 }
 
 func (h *hostItem) MarshalJSON() ([]byte, error) {
-	m := map[string]any{
-		"links": h.links,
-	}
-	switch h.status {
-	case StatusOK:
-		m["status"] = "ok"
-	case StatusMaybeOK:
-		m["status"] = "ok?"
-	case StatusProxyOK:
-		m["status"] = "proxy"
-	case StatusMaybeError:
-		m["status"] = "error?"
-	case StatusError:
-		m["status"] = "error"
-	}
-	if h.err != nil {
-		m["error"] = h.err.Error()
-	}
-	return json.Marshal(m)
+	s := statusName(h.status)
+	return json.Marshal(s)
 }
 
-// maxDomainLinks Just for saving app memory
-const maxDomainLinks = 4
-const maxDomainLinkLen = 128
-
-func (h *hostItem) updateLinks(links []string) {
-	for _, link := range links {
-		if len(h.links) >= maxDomainLinks {
-			break
-		}
-		if !slices.Contains(h.links, link) {
-			h.links = append(h.links, link)
-		}
-	}
+type countingConn struct {
+	net.Conn
+	readBytes *atomic.Int64
 }
 
-// httpRequest return http_status, http_body, error
-func httpRequest(rawURL string, timeout, readBody int, proxy string) (int, []byte, error) {
-	client := http.Client{
-		Transport: &http.Transport{
-			Proxy: func(req *http.Request) (*url.URL, error) {
-				if proxy == "" {
-					return nil, nil
-				}
-				return url.Parse(proxy)
-			},
-			DisableCompression:  true, // important
-			TLSHandshakeTimeout: 1 * time.Second,
+func (c *countingConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	c.readBytes.Add(int64(n))
+	return n, err
+}
+
+func CheckURL(rawURL string, timeout time.Duration, readLimit int, proxy, sni string) (int, int, error) {
+	var readBytes atomic.Int64
+	var conn *countingConn
+	var connMu sync.Mutex
+
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			connMu.Lock()
+			defer connMu.Unlock()
+			// This shouldn't happen, but anyway.
+			if conn != nil {
+				return nil, errors.New("refusing to open a second TCP connection")
+			}
+
+			rawConn, err := dialer.DialContext(ctx, network, address)
+			if err != nil {
+				return nil, err
+			}
+			conn = &countingConn{Conn: rawConn, readBytes: &readBytes}
+			return conn, nil
 		},
+		DisableCompression:  true, // increase body size
+		TLSHandshakeTimeout: time.Second,
+		MaxConnsPerHost:     1,
+	}
+	defer transport.CloseIdleConnections()
+
+	// Use proxy to check IP block.
+	if proxy != "" {
+		transport.Proxy = func(req *http.Request) (*url.URL, error) {
+			return url.Parse(proxy)
+		}
+	}
+
+	// Use false SNI to check SNI block.
+	if sni != "" {
+		transport.TLSClientConfig = &tls.Config{
+			ServerName:         sni,
+			InsecureSkipVerify: true,
+			NextProtos:         []string{"http/1.1"},
+		}
+	}
+
+	client := http.Client{
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// Allow only redirect to same host and subdomain:
-			// https://wiki.qidi3d.com -> https://wiki.qidi3d.com/en/home
-			// https://goodreads.com -> https://www.goodreads.com
-			if strings.HasSuffix(req.URL.Host, via[0].URL.Host) {
+			if strings.EqualFold(req.URL.Host, via[0].URL.Host) {
 				return nil
 			}
 			return http.ErrUseLastResponse
 		},
-		Timeout: time.Duration(timeout) * time.Second,
 	}
 
-	req, err := http.NewRequest("GET", rawURL, nil)
-	if err != nil {
-		return 0, nil, err
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
-	req.Header.Add("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0")
+	var status int
+	var err error
 
-	res, err := client.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer res.Body.Close()
+	// Call multiple GET in same TCP connection to check throttled.
+	for range 3 {
+		var req *http.Request
+		if req, err = http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil); err != nil {
+			break
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0")
 
-	if readBody == 0 {
-		return res.StatusCode, nil, nil
-	}
+		var res *http.Response
+		if res, err = client.Do(req); err != nil {
+			break
+		}
 
-	buf := make([]byte, readBody)
-	var n, nn int
-	for n < readBody {
-		nn, err = res.Body.Read(buf[n:])
-		n += nn
+		// Save status from first response.
+		if status == 0 {
+			status = res.StatusCode
+		}
+
+		// Read body to check throttled.
+		if readLimit > 0 {
+			_, err = io.Copy(io.Discard, res.Body)
+		}
+
+		// We must close body.
+		err = errors.Join(err, res.Body.Close())
 		if err != nil {
-			if err == io.EOF {
-				err = nil
-			}
+			break
+		}
+
+		// Skip other than 200 answers because they have small body.
+		// If res.Close flag - we can't call next request in same connection.
+		if status != http.StatusOK || res.Close || readBytes.Load() > int64(readLimit) {
 			break
 		}
 	}
-	return res.StatusCode, buf[:n], err
-}
 
-var reLink = regexp.MustCompile(`(href|src|content)="(https:/)?/[^"]+`)
-
-func parseLinks(host string, body []byte) url.Values {
-	links := url.Values{}
-
-	// Find all links in body
-	matches := reLink.FindAll(body, -1)
-
-	// Sort links, so more important will be first
-	slices.SortFunc(matches, func(a, b []byte) int {
-		return linkWeight(b) - linkWeight(a)
-	})
-
-	for _, m := range matches {
-		i := bytes.IndexByte(m, '"')
-		link := string(m[i+1:])
-
-		// Skip big links (save app memory)
-		if len(link) > maxDomainLinkLen {
-			continue
-		}
-
-		u2, err := url.Parse(link)
-		if err != nil {
-			continue
-		}
-
-		// Skip index pages
-		if len(u2.Path) <= 1 {
-			continue
-		}
-
-		if u2.Host == "" {
-			if len(links[host]) < maxDomainLinks {
-				u := url.URL{Scheme: "https", Host: host}
-				links.Add(host, u.ResolveReference(u2).String())
-			}
-		} else if len(links[u2.Host]) < maxDomainLinks {
-			// Check zero host `//ajax.googleapis.com/ajax/libs/webfont/1/webfont.js`
-			if u2.Scheme == "" {
-				link = "https:" + link
-			}
-			links.Add(u2.Host, link)
-		}
-	}
-
-	return links
-}
-
-func linkWeight(path []byte) int {
-	for i := len(path) - 1; i > 0; i-- {
-		switch path[i] {
-		case '.':
-			switch string(path[i+1:]) {
-			case "css", "js":
-				return 2
-			case "jpg", "jpeg", "png":
-				return 1
-			}
-			return 0
-		case '?', '#':
-			path = path[:i]
-		case '/':
-			return 0
-		}
-	}
-	return 0
+	return status, int(readBytes.Load()), err
 }
