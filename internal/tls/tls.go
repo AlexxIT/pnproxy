@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -196,9 +195,6 @@ func handleRaw(params url.Values) handlerFunc {
 }
 
 func handleByePass(params url.Values) handlerFunc {
-	if runtime.GOOS != "linux" {
-		return nil
-	}
 	return handleRawPass(params, true)
 }
 

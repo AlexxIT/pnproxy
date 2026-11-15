@@ -337,7 +337,7 @@ tls:
 
 ## tls action: bye_pass
 
-Forwards traffic using default [byedpi](https://github.com/hufrea/byedpi) logic for Linux. Supported only for Linux.
+Forwards traffic using [byedpi](https://github.com/hufrea/byedpi) logic for Linux and Windows.
 
 ```yaml
 tls:

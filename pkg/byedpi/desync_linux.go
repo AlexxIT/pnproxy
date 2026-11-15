@@ -17,16 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// WriteFakeMD5 sends the fake prefix of p with TCP_MD5SIG enabled, waits until
-// TCP_INFO reports no unsent bytes, restores the mmap contents and socket
-// options, then writes the final byte normally. Page restoration follows
-// ByeDPI's Linux-specific technique. An empty unsent queue does not guarantee
-// that the kernel has finished using gifted pages for retransmissions, so this
-// behavior depends on the Linux networking implementation.
-// The caller must not write to c concurrently or change its socket options.
-// If an error occurs after bytes were queued, the connection is closed before
-// restoring gifted pages so the failed payload cannot be replayed.
-func WriteFakeMD5(c *net.TCPConn, p []byte) (sent int, err error) {
+func desyncFirst(c *net.TCPConn, p []byte) (sent int, err error) {
 	if c == nil {
 		return 0, net.ErrClosed
 	}
