@@ -75,18 +75,21 @@ func handleHttpGet(params url.Values) func(host string) int {
 	readLimit, _ := strconv.Atoi(params.Get("read_size"))
 
 	proxy := params.Get("proxy")
-	proxyTimeout := pkg.ParseTimeout(params.Get("proxy_timeout"), 5*time.Second)
+	proxyTimeout := pkg.ParseTimeout(params.Get("proxy_timeout"), timeout)
 
 	sni := params.Get("sni")
-	sniTimeout := pkg.ParseTimeout(params.Get("sni_timeout"), 5*time.Second)
+	sniTimeout := pkg.ParseTimeout(params.Get("sni_timeout"), timeout)
 
 	statusProxy := params.Get("status_proxy")
-	statusTimeout := pkg.ParseTimeout(params.Get("status_timeout"), 5*time.Second)
+	statusTimeout := pkg.ParseTimeout(params.Get("status_timeout"), timeout)
 	statusCodes := map[int]bool{}
 	for _, s := range params["status_code"] {
 		if i, _ := strconv.Atoi(s); i > 0 {
 			statusCodes[i] = true
 		}
+	}
+	if statusProxy == "" && proxy != "" {
+		statusProxy = proxy
 	}
 
 	return func(host string) int {
@@ -95,7 +98,7 @@ func handleHttpGet(params url.Values) func(host string) int {
 		statusCode, size, err := CheckURL(rawURL, timeout, readLimit, "", "")
 		if statusCode > 0 {
 			// Check if proxy status code better than direct status.
-			if statusCodes[statusCode] {
+			if statusProxy != "" && statusCodes[statusCode] {
 				proxyCode, _, _ := CheckURL(rawURL, statusTimeout, 0, statusProxy, "")
 				if proxyCode > 0 && !statusCodes[proxyCode] {
 					return ProxyStatusOK
