@@ -133,17 +133,17 @@ func (c *countingConn) Read(p []byte) (int, error) {
 func CheckURL(rawURL string, timeout time.Duration, readLimit int, proxy, sni string) (int, int, error) {
 	var readBytes atomic.Int64
 	var conn *countingConn
-	var connMu sync.Mutex
+	//var connMu sync.Mutex
 
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			connMu.Lock()
-			defer connMu.Unlock()
-			// This shouldn't happen, but anyway.
-			if conn != nil {
-				return nil, errors.New("refusing to open a second TCP connection")
-			}
+			//connMu.Lock()
+			//defer connMu.Unlock()
+			//// This shouldn't happen, but anyway.
+			//if conn != nil {
+			//	return nil, errors.New("refusing to open a second TCP connection")
+			//}
 
 			rawConn, err := dialer.DialContext(ctx, network, address)
 			if err != nil {
@@ -182,14 +182,15 @@ func CheckURL(rawURL string, timeout time.Duration, readLimit int, proxy, sni st
 			}
 			return http.ErrUseLastResponse
 		},
+		Timeout: timeout,
 	}
 
-	ctx := context.Background()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
+	//ctx := context.Background()
+	//if timeout > 0 {
+	//	var cancel context.CancelFunc
+	//	ctx, cancel = context.WithTimeout(ctx, timeout)
+	//	defer cancel()
+	//}
 
 	var status int
 	var err error
@@ -197,7 +198,7 @@ func CheckURL(rawURL string, timeout time.Duration, readLimit int, proxy, sni st
 	// Call multiple GET in same TCP connection to check throttled.
 	for range 3 {
 		var req *http.Request
-		if req, err = http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil); err != nil {
+		if req, err = http.NewRequest(http.MethodGet, rawURL, nil); err != nil {
 			break
 		}
 		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0")
