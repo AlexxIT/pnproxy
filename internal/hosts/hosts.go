@@ -110,8 +110,10 @@ func handleHttpGet(params url.Values) func(host string) int {
 			} else if errors.Is(err, context.DeadlineExceeded) {
 				return DirectThrottled
 			} else {
-				return DirectUnknown
+				return DirectNoBody
 			}
+		} else if size > 0 {
+			return DirectHTTPFailed
 		}
 
 		if size == 0 && sni != "" {
@@ -123,7 +125,7 @@ func handleHttpGet(params url.Values) func(host string) int {
 			}
 		}
 
-		if proxy != "" {
+		if size <= 0 && proxy != "" {
 			statusCode, _, _ = CheckURL(rawURL, proxyTimeout, 0, proxy, "")
 			if statusCode > 0 {
 				return ProxyOK

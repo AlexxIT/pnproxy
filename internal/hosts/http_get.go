@@ -77,8 +77,9 @@ func (h *HostChecker) getItem(host string) *hostItem {
 
 const (
 	DirectOK = iota + 1
+	DirectNoBody
+	DirectHTTPFailed
 	DirectThrottled
-	DirectUnknown
 	DirectSNIBlocked
 	ProxyOK
 	ProxyStatusOK
@@ -90,10 +91,12 @@ func statusName(status int) string {
 	switch status {
 	case DirectOK:
 		return "direct_ok"
+	case DirectNoBody:
+		return "direct_no_body"
+	case DirectHTTPFailed:
+		return "direct_http_failed"
 	case DirectThrottled:
 		return "direct_throttled"
-	case DirectUnknown:
-		return "direct_unknown"
 	case DirectSNIBlocked:
 		return "direct_sni_blocked"
 	case ProxyOK:
@@ -230,6 +233,10 @@ func CheckURL(rawURL string, timeout time.Duration, readLimit int, proxy, sni st
 		if status != http.StatusOK || res.Close || readBytes.Load() > int64(readLimit) {
 			break
 		}
+	}
+
+	if conn == nil {
+		return 0, -1, err
 	}
 
 	return status, int(readBytes.Load()), err
