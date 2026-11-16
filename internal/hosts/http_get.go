@@ -170,6 +170,7 @@ func CheckURL(rawURL string, timeout time.Duration, readLimit int, proxy, sni st
 		transport.TLSClientConfig = &tls.Config{
 			ServerName:         sni,
 			InsecureSkipVerify: true,
+			CurvePreferences:   []tls.CurveID{tls.X25519, tls.CurveP256, tls.CurveP384},
 			NextProtos:         []string{"http/1.1"},
 		}
 	}
