@@ -71,41 +71,51 @@ var static = map[string]string{}
 var httpGet *HostChecker
 
 func handleHttpGet(params url.Values) func(host string) int {
-	timeout := pkg.ParseTimeout(params.Get("timeout"), 5*time.Second)
-	readLimit, _ := strconv.Atoi(params.Get("read_size"))
+	directChecker := Checker{
+		ReadLimit: atoi(params.Get("read_size")),
+		Parallel:  atoi(params.Get("parallel")),
+		Timeout:   pkg.ParseTimeout(params.Get("timeout"), 5*time.Second),
+	}
 
-	proxy := params.Get("proxy")
-	proxyTimeout := pkg.ParseTimeout(params.Get("proxy_timeout"), timeout)
+	proxyChecker := Checker{
+		Proxy:   params.Get("proxy"),
+		Timeout: pkg.ParseTimeout(params.Get("proxy_timeout"), directChecker.Timeout),
+	}
 
-	sni := params.Get("sni")
-	sniTimeout := pkg.ParseTimeout(params.Get("sni_timeout"), timeout)
+	sniChecker := Checker{
+		SNI:     params.Get("sni"),
+		Timeout: pkg.ParseTimeout(params.Get("sni_timeout"), directChecker.Timeout),
+	}
 
-	statusProxy := params.Get("status_proxy")
-	statusTimeout := pkg.ParseTimeout(params.Get("status_timeout"), timeout)
+	statusChecker := Checker{
+		Proxy:   params.Get("status_proxy"),
+		Timeout: pkg.ParseTimeout(params.Get("status_timeout"), directChecker.Timeout),
+	}
+
 	statusCodes := map[int]bool{}
 	for _, s := range params["status_code"] {
 		if i, _ := strconv.Atoi(s); i > 0 {
 			statusCodes[i] = true
 		}
 	}
-	if statusProxy == "" && proxy != "" {
-		statusProxy = proxy
+	if statusChecker.Proxy == "" && proxyChecker.Proxy != "" {
+		statusChecker.Proxy = proxyChecker.Proxy
 	}
 
 	return func(host string) int {
 		rawURL := "https://" + host
 
-		statusCode, size, err := CheckURL(rawURL, timeout, readLimit, "", "")
+		statusCode, size, err := directChecker.Check(rawURL)
 		if statusCode > 0 {
 			// Check if proxy status code better than direct status.
-			if statusProxy != "" && statusCodes[statusCode] {
-				proxyCode, _, _ := CheckURL(rawURL, statusTimeout, 0, statusProxy, "")
+			if statusChecker.Proxy != "" && statusCodes[statusCode] {
+				proxyCode, _, _ := statusChecker.Check(rawURL)
 				if proxyCode > 0 && !statusCodes[proxyCode] {
 					return ProxyStatusOK
 				}
 			}
 
-			if size >= readLimit {
+			if size >= directChecker.ReadLimit {
 				return DirectOK
 			} else if errors.Is(err, context.DeadlineExceeded) {
 				return DirectThrottled
@@ -113,20 +123,20 @@ func handleHttpGet(params url.Values) func(host string) int {
 				return DirectNoBody
 			}
 		} else if size > 0 {
-			return DirectHTTPFailed
+			return DirectNoHTTP
 		}
 
-		if size == 0 && sni != "" {
+		if size == 0 && sniChecker.SNI != "" {
 			// One second will be enought.
-			_, size, err = CheckURL(rawURL, sniTimeout, 0, "", sni)
+			_, size, err = sniChecker.Check(rawURL)
 			// Some sites can close connection before TLS handshake (it is good).
 			if size > 0 || errors.Is(err, io.EOF) {
 				return DirectSNIBlocked
 			}
 		}
 
-		if size <= 0 && proxy != "" {
-			statusCode, _, _ = CheckURL(rawURL, proxyTimeout, 0, proxy, "")
+		if size <= 0 && proxyChecker.Proxy != "" {
+			statusCode, _, _ = proxyChecker.Check(rawURL)
 			if statusCode > 0 {
 				return ProxyOK
 			} else {
@@ -136,6 +146,11 @@ func handleHttpGet(params url.Values) func(host string) int {
 
 		return DirectError
 	}
+}
+
+func atoi(str string) int {
+	i, _ := strconv.Atoi(str)
+	return i
 }
 
 func Hosts() any {
