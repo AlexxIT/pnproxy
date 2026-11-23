@@ -6,28 +6,26 @@ import (
 	"io"
 )
 
+const tlsClientHello = 1
+
 func readClientHello(r io.Reader) ([]byte, error) {
 	buf := make([]byte, 16*1024)
 
 	// read at least 5 bytes
-	n1, err := io.ReadAtLeast(r, buf, 5)
+	n1, err := io.ReadAtLeast(r, buf, 6)
 	if err != nil {
 		return nil, err
 	}
 
-	_ = buf[4]
+	_ = buf[5]
 
-	if buf[0] != 0x16 {
+	if buf[0] != 0x16 && buf[5] != tlsClientHello {
 		return nil, errors.New("tls: not a handshake")
 	}
 
 	n := 5 + (int(buf[3])<<8 | int(buf[4]))
-	if n1 == n {
+	if n1 >= n {
 		return buf[:n1], nil
-	}
-
-	if n1 > n {
-		return nil, errors.New("tls: too big handshake")
 	}
 
 	n2, err := io.ReadAtLeast(r, buf[n1:], n-n1)
