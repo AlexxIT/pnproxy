@@ -87,7 +87,9 @@ func parseQuery(query *dns.Msg, remoteAddr net.Addr) {
 			ips := static[rule]
 
 			if ips == nil {
-				ips, _ = net.LookupIP(question.Name)
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				ips, _ = net.DefaultResolver.LookupIP(ctx, "ip", question.Name)
+				cancel()
 			}
 
 			log.Debug().Msgf("[dns] query remote_addr=%s name=%s rule=%s ips=%s", remoteAddr, question.Name, rule, ips)
