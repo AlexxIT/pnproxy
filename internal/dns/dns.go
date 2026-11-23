@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
@@ -61,15 +62,25 @@ func Init() {
 // static key is a rule name
 var static = map[string][]net.IP{}
 
+const defaultMaxConcurrent = 256
+
 func serve(address string) {
+	var active atomic.Int32
+
 	log.Info().Msgf("[dns] listen=%s", address)
+
 	server := &dns.Server{Addr: address, Net: "udp"}
 	server.Handler = dns.HandlerFunc(func(wr dns.ResponseWriter, msg *dns.Msg) {
 		m := &dns.Msg{}
 		m.SetReply(msg)
 
 		if msg.Opcode == dns.OpcodeQuery {
-			parseQuery(m, wr.RemoteAddr())
+			defer active.Add(-1)
+			if active.Add(1) <= defaultMaxConcurrent {
+				parseQuery(m, wr.RemoteAddr())
+			} else {
+				m.Rcode = dns.RcodeServerFailure
+			}
 		}
 
 		_ = wr.WriteMsg(m)

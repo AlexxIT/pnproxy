@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/AlexxIT/pnproxy/internal/app"
@@ -54,9 +55,18 @@ func Init() {
 	}
 }
 
+const defaultMaxConcurrent = 1024
+
+var activeConnections atomic.Int32
+
 func Handle(src net.Conn) {
 	//noinspection GoUnhandledErrorResult
 	defer src.Close()
+	defer activeConnections.Add(-1)
+
+	if activeConnections.Add(1) > defaultMaxConcurrent {
+		return
+	}
 
 	remote := src.RemoteAddr().String()
 
@@ -126,7 +136,7 @@ func serve(address string) {
 			log.Error().Err(err).Caller().Send()
 			return
 		}
-		go Handle(conn)
+		Handle(conn)
 	}
 }
 
